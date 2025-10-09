@@ -19,23 +19,18 @@ const config = {
     resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1d'
   },
   
-  // Email Configuration
+  // SendGrid Email Configuration
   email: {
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-    from: process.env.EMAIL_USER // Use the same email as sender
+    apiKey: process.env.SENDGRID_API_KEY, // Required
+    from: process.env.EMAIL_FROM // Verified sender email
   },
   
-  // URL Configuration for Production Deployment
+  // URL Configuration
   urls: {
     frontend: process.env.FRONTEND_URL || 'http://localhost:3000',
     userFrontend: process.env.USER_FRONTEND_URL || 'http://localhost:3000',
     providerFrontend: process.env.PROVIDER_FRONTEND_URL || 'http://localhost:3001',
     backend: process.env.BACKEND_URL || 'http://localhost:5000',
-    // Multiple frontend URLs for CORS (supports deployment on different platforms)
     frontendUrls: process.env.FRONTEND_URLS ?
       process.env.FRONTEND_URLS.split(',').map(url => url.trim()) :
       [
@@ -45,7 +40,6 @@ const config = {
         process.env.USER_FRONTEND_URL,
         process.env.PROVIDER_FRONTEND_URL
       ].filter(Boolean),
-    // Frontend ports for dynamic handling
     frontendPorts: process.env.FRONTEND_PORTS ?
       process.env.FRONTEND_PORTS.split(',').map(port => port.trim()) :
       ['3000', '3001', '3002']
@@ -59,8 +53,8 @@ const config = {
   // Validation
   validate() {
     const required = [
-      'EMAIL_USER',
-      'EMAIL_PASS'
+      'SENDGRID_API_KEY',
+      'EMAIL_FROM'
     ];
     
     const missing = required.filter(key => !process.env[key]);
@@ -69,12 +63,7 @@ const config = {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
     
-    // Validate email configuration
-    if (!this.email.user || !this.email.pass) {
-      throw new Error('Email configuration is incomplete. Please check EMAIL_USER and EMAIL_PASS in .env file');
-    }
-    
-    console.log('✅ Configuration validated successfully');
+    console.log('✅ SendGrid Configuration validated successfully');
     return true;
   },
   
@@ -84,8 +73,7 @@ const config = {
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
     console.log(`   🚀 Port: ${this.port}`);
     console.log(`   📊 Database: ${this.mongodb.uri.replace(/\/\/.*@/, '//***:***@')}`);
-    console.log(`   📧 Email Host: ${this.email.host}:${this.email.port}`);
-    console.log(`   📧 Email User: ${this.email.user}`);
+    console.log(`   📧 Email From: ${this.email.from}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
     console.log(`   🔗 All Frontend URLs: ${this.urls.frontendUrls.join(', ')}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);
