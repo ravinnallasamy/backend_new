@@ -123,6 +123,20 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <body>
+        <h1>Agricultural Equipment Rental Platform</h1>
+        <p>Backend server is running successfully!</p>
+        <p>Check <a href="/health">/health</a> for API status</p>
+        <p>Environment: ${process.env.NODE_ENV || 'development'}</p>
+      </body>
+    </html>
+  `);
+});
+
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
   next(createError(404));
@@ -137,6 +151,44 @@ app.use(function(err, req, res, next) {
   // render the error page
   res.status(err.status || 500);
   res.render('error');
+});
+
+// Server startup - ADD THIS SECTION
+const PORT = process.env.PORT || 5000;
+
+// Start the server
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server successfully listening on port ${PORT}`);
+  console.log(`🌐 Server address:`, server.address());
+  console.log(`🚀 Application running in ${process.env.NODE_ENV || 'development'} mode`);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('🛑 Received SIGINT. Shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed.');
+    process.exit(0);
+  });
+});
+
+process.on('SIGTERM', () => {
+  console.log('🛑 Received SIGTERM. Shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed.');
+    process.exit(0);
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled Rejection:', err);
+  process.exit(1);
 });
 
 module.exports = app;
