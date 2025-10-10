@@ -19,23 +19,22 @@ const config = {
     resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1d'
   },
   
-  // Email Configuration - UPDATED FOR RESEND
+  // Email Configuration
   email: {
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER || 'noreply@uzhavanrentals.com'
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.EMAIL_PORT) || 587,
+    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+    from: process.env.EMAIL_USER // Use the same email as sender
   },
   
-  // Resend Configuration - ADDED NEW SECTION
-  resend: {
-    apiKey: process.env.RESEND_API_KEY
-  },
-  
-  // URL Configuration for Production Deployment
+  // URL Configuration
   urls: {
     frontend: process.env.FRONTEND_URL || 'http://localhost:3000',
     userFrontend: process.env.USER_FRONTEND_URL || 'http://localhost:3000',
     providerFrontend: process.env.PROVIDER_FRONTEND_URL || 'http://localhost:3001',
     backend: process.env.BACKEND_URL || 'http://localhost:5000',
-    // Multiple frontend URLs for CORS (supports deployment on different platforms)
     frontendUrls: process.env.FRONTEND_URLS ?
       process.env.FRONTEND_URLS.split(',').map(url => url.trim()) :
       [
@@ -45,7 +44,6 @@ const config = {
         process.env.USER_FRONTEND_URL,
         process.env.PROVIDER_FRONTEND_URL
       ].filter(Boolean),
-    // Frontend ports for dynamic handling
     frontendPorts: process.env.FRONTEND_PORTS ?
       process.env.FRONTEND_PORTS.split(',').map(port => port.trim()) :
       ['3000', '3001', '3002']
@@ -59,8 +57,8 @@ const config = {
   // Validation - UPDATED FOR RESEND
   validate() {
     const required = [
-      'RESEND_API_KEY',
-      'EMAIL_FROM'
+      'EMAIL_USER',
+      'EMAIL_PASS'
     ];
     
     const missing = required.filter(key => !process.env[key]);
@@ -69,9 +67,9 @@ const config = {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
     
-    // Validate Resend configuration
-    if (!this.resend.apiKey) {
-      throw new Error('Resend configuration is incomplete. Please check RESEND_API_KEY in .env file');
+    // Validate email configuration
+    if (!this.email.user || !this.email.pass) {
+      throw new Error('Email configuration is incomplete. Please check EMAIL_USER and EMAIL_PASS in .env file');
     }
     
     console.log('✅ Configuration validated successfully');
@@ -84,8 +82,8 @@ const config = {
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
     console.log(`   🚀 Port: ${this.port}`);
     console.log(`   📊 Database: ${this.mongodb.uri.replace(/\/\/.*@/, '//***:***@')}`);
-    console.log(`   📧 Email From: ${this.email.from}`);
-    console.log(`   🔑 Resend API Key: ${this.resend.apiKey ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   📧 Email Host: ${this.email.host}:${this.email.port}`);
+    console.log(`   📧 Email User: ${this.email.user}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
     console.log(`   🔗 All Frontend URLs: ${this.urls.frontendUrls.join(', ')}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);
