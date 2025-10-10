@@ -4,22 +4,40 @@ const User = require('../model/user');
 const Provider = require('../model/provider');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const nodemailer = require('nodemailer');
+const emailjs = require('@emailjs/nodejs');
 const config = require('../config/config');
 
 // Validate configuration on startup
 config.validate();
 
-// Email transporter configuration
-const transporter = nodemailer.createTransport({
-  host: config.email.host,
-  port: config.email.port,
-  secure: config.email.secure,
-  auth: {
-    user: config.email.user,
-    pass: config.email.pass
+// EmailJS configuration
+const emailjsConfig = {
+  serviceId: process.env.EMAILJS_SERVICE_ID,
+  activationTemplateId: process.env.EMAILJS_ACTIVATION_TEMPLATE_ID,
+  resetTemplateId: process.env.EMAILJS_RESET_TEMPLATE_ID,
+  publicKey: process.env.EMAILJS_PUBLIC_KEY,
+  privateKey: process.env.EMAILJS_PRIVATE_KEY,
+};
+
+// Helper function to send emails with EmailJS
+async function sendEmailJS(templateId, templateParams) {
+  try {
+    const result = await emailjs.send(
+      emailjsConfig.serviceId,
+      templateId,
+      templateParams,
+      {
+        publicKey: emailjsConfig.publicKey,
+        privateKey: emailjsConfig.privateKey,
+      }
+    );
+    console.log('✅ Email sent via EmailJS');
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('❌ EmailJS error:', error);
+    return { success: false, error: error.message };
   }
-});
+}
 
 // USER AUTHENTICATION ROUTES
 
@@ -92,41 +110,42 @@ router.post('/user/signup', async (req, res) => {
 
     console.log('Activation token generated:', activationToken);
 
-    const mail = {
-      from: config.email.from,
-      to: email,
-      subject: "Welcome to Rental App - Activate Your Account",
-      html: `
-        <h1>Welcome ${name}!</h1>
-        <p>Thank you for joining our Agricultural Equipment Rental Platform.</p>
-        <p>Click the link below to activate your account:</p>
-        <a href='${config.urls.frontend}/?activate=${activationToken}'>Activate Account</a>
-        <p>If the link doesn't work, copy and paste this URL into your browser:</p>
-        <p>${config.urls.frontend}/?activate=${activationToken}</p>
-      `
+    // Create user first
+    const user = new User({
+      name,
+      email,
+      password: hashedPassword,
+      phone,
+      address,
+      userType: 'user',
+      token: activationToken
+    });
+
+    await user.save();
+
+    // Send activation email with EmailJS (don't wait for response)
+    const templateParams = {
+      to_email: email,
+      name: name,
+      activation_url: `${config.urls.frontend}/?activate=${activationToken}`,
+      email: email,
     };
 
-    transporter.sendMail(mail, async (err, success) => {
-      if (err) {
-        console.error('Email sending failed:', err);
-        res.status(400).json({ "message": "Failed to send activation email. Please verify your email address." });
-      } else {
-        const user = new User({
-          name,
-          email,
-          password: hashedPassword,
-          phone,
-          address,
-          userType: 'user',
-          token: activationToken
-        });
+    sendEmailJS(emailjsConfig.activationTemplateId, templateParams)
+      .then(result => {
+        if (result.success) {
+          console.log('✅ User activation email sent successfully');
+        } else {
+          console.log('⚠️ User activation email failed but user was created');
+        }
+      })
+      .catch(err => {
+        console.error('Email sending error:', err);
+      });
 
-        await user.save();
-        res.status(201).json({
-          "message": "Account created successfully! Please check your email to activate your account.",
-          "email": email
-        });
-      }
+    res.status(201).json({
+      "message": "Account created successfully! Please check your email to activate your account.",
+      "email": email
     });
 
   } catch (err) {
@@ -246,52 +265,51 @@ router.post('/provider/signup', async (req, res) => {
 
     console.log('Provider activation token generated:', activationToken);
 
-    const mail = {
-      from: config.email.from,
-      to: email,
-      subject: "Welcome to Rental App - Provider Account Activation",
-      html: `
-        <h1>Welcome ${name}!</h1>
-        <p>Thank you for joining our Agricultural Equipment Rental Platform as a Provider.</p>
-        <p>Business: ${businessName || 'Not specified'}</p>
-        <p>Click the link below to activate your provider account:</p>
-        <a href='${config.urls.frontend}/?activate=${activationToken}'>Activate Provider Account</a>
-        <p>If the link doesn't work, copy and paste this URL into your browser:</p>
-        <p>${config.urls.frontend}/?activate=${activationToken}</p>
-      `
+    // Prepare provider data with proper defaults
+    const providerData = {
+      name,
+      email,
+      password: hashedPassword,
+      phone,
+      address,
+      businessName: businessName || '',
+      licenseNumber: licenseNumber || '',
+      userType: 'provider',
+      token: activationToken
     };
 
-    transporter.sendMail(mail, async (err, success) => {
-      if (err) {
-        console.error('Email sending failed:', err);
-        res.status(400).json({ "message": "Failed to send activation email. Please verify your email address." });
-      } else {
-        // Prepare provider data with proper defaults
-        const providerData = {
-          name,
-          email,
-          password: hashedPassword,
-          phone,
-          address,
-          businessName: businessName || '',
-          licenseNumber: licenseNumber || '',
-          userType: 'provider',
-          token: activationToken
-        };
+    // Only set businessType if it's not empty, let the model handle the default
+    if (businessType && businessType.trim() !== '') {
+      providerData.businessType = businessType;
+    }
 
-        // Only set businessType if it's not empty, let the model handle the default
-        if (businessType && businessType.trim() !== '') {
-          providerData.businessType = businessType;
+    const provider = new Provider(providerData);
+    await provider.save();
+
+    // Send activation email with EmailJS (don't wait for response)
+    const templateParams = {
+      to_email: email,
+      name: name,
+      activation_url: `${config.urls.frontend}/?activate=${activationToken}`,
+      email: email,
+      business_name: businessName || 'Not specified'
+    };
+
+    sendEmailJS(emailjsConfig.activationTemplateId, templateParams)
+      .then(result => {
+        if (result.success) {
+          console.log('✅ Provider activation email sent successfully');
+        } else {
+          console.log('⚠️ Provider activation email failed but provider was created');
         }
+      })
+      .catch(err => {
+        console.error('Email sending error:', err);
+      });
 
-        const provider = new Provider(providerData);
-
-        await provider.save();
-        res.status(201).json({
-          "message": "Provider account created successfully! Please check your email to activate your account.",
-          "email": email
-        });
-      }
+    res.status(201).json({
+      "message": "Provider account created successfully! Please check your email to activate your account.",
+      "email": email
     });
 
   } catch (err) {
@@ -373,24 +391,27 @@ router.post('/password/forgot', async (req, res) => {
 
     const frontendBase = (config.urls.frontend || '').replace(/\/+$/, '');
     const resetUrl = `${frontendBase}/reset-password/${token}`;
-    const mail = {
-      from: config.email.from,
-      to: email,
-      subject: 'Reset your password',
-      html: `
-        <h2>Password Reset</h2>
-        <p>We received a request to reset your password. Click the link below to set a new password:</p>
-        <a href='${resetUrl}'>Reset Password</a>
-        <p>This link will expire in ${config.jwt.resetExpiresIn}.</p>
-        <p>If you did not request this, you can safely ignore this email.</p>
-      `
+
+    // Send reset email with EmailJS
+    const templateParams = {
+      to_email: email,
+      name: account.name,
+      reset_url: resetUrl,
+      email: email,
+      time: new Date().toLocaleString(),
     };
 
-    transporter.sendMail(mail, (err) => {
-      if (err) {
-        console.error('Reset email send error:', err);
-      }
-    });
+    sendEmailJS(emailjsConfig.resetTemplateId, templateParams)
+      .then(result => {
+        if (result.success) {
+          console.log('✅ Password reset email sent successfully');
+        } else {
+          console.log('⚠️ Password reset email failed');
+        }
+      })
+      .catch(err => {
+        console.error('Reset email error:', err);
+      });
 
     return res.status(200).json({ message: 'If the email exists, a reset link has been sent.' });
   } catch (err) {

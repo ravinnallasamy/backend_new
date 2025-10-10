@@ -36,9 +36,6 @@ const app = express();
 config.validate();
 config.display();
 
-// Connect to MongoDB
-connectDB();
-
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
@@ -153,34 +150,45 @@ app.use(function(err, req, res, next) {
   res.render('error');
 });
 
-// Server startup - ADD THIS SECTION
-const PORT = process.env.PORT || 5000;
+// Server startup with database connection
+const startServer = async () => {
+  try {
+    // Connect to MongoDB first
+    await connectDB();
+    console.log('✅ MongoDB connected successfully');
 
-// Start the server
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server successfully listening on port ${PORT}`);
-  console.log(`🌐 Server address:`, server.address());
-  console.log(`🚀 Application running in ${process.env.NODE_ENV || 'development'} mode`);
-});
+    // Start the server after successful database connection
+    const PORT = process.env.PORT || 5000;
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`✅ Server successfully listening on port ${PORT}`);
+      console.log(`🌐 Server address:`, server.address());
+      console.log(`🚀 Application running in ${process.env.NODE_ENV || 'development'} mode`);
+    });
 
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('🛑 Received SIGINT. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Server closed.');
-    process.exit(0);
-  });
-});
+    // Handle graceful shutdown
+    process.on('SIGINT', () => {
+      console.log('🛑 Received SIGINT. Shutting down gracefully...');
+      server.close(() => {
+        console.log('✅ Server closed.');
+        process.exit(0);
+      });
+    });
 
-process.on('SIGTERM', () => {
-  console.log('🛑 Received SIGTERM. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Server closed.');
-    process.exit(0);
-  });
-});
+    process.on('SIGTERM', () => {
+      console.log('🛑 Received SIGTERM. Shutting down gracefully...');
+      server.close(() => {
+        console.log('✅ Server closed.');
+        process.exit(0);
+      });
+    });
 
-// Handle uncaught exceptions
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+// Handle uncaught exceptions (keep these at global level)
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err);
   process.exit(1);
@@ -190,5 +198,8 @@ process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Rejection:', err);
   process.exit(1);
 });
+
+// Start the application
+startServer();
 
 module.exports = app;

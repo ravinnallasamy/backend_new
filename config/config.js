@@ -19,14 +19,18 @@ const config = {
     resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1d'
   },
   
-  // Email Configuration - UPDATED FOR SMTP/NODEMAILER
+  // Email Configuration - UPDATED FOR EMAILJS
   email: {
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER // Use EMAIL_FROM or fallback to EMAIL_USER
+    from: process.env.EMAIL_FROM || 'uzhavanrentals@gmail.com' // Only need from address for EmailJS
+  },
+  
+  // EmailJS Configuration - ADDED NEW SECTION
+  emailjs: {
+    serviceId: process.env.EMAILJS_SERVICE_ID,
+    activationTemplateId: process.env.EMAILJS_ACTIVATION_TEMPLATE_ID,
+    resetTemplateId: process.env.EMAILJS_RESET_TEMPLATE_ID,
+    publicKey: process.env.EMAILJS_PUBLIC_KEY,
+    privateKey: process.env.EMAILJS_PRIVATE_KEY
   },
   
   // URL Configuration
@@ -54,12 +58,14 @@ const config = {
     version: process.env.API_VERSION || 'v1'
   },
   
-  // Validation - UPDATED FOR SMTP
+  // Validation - UPDATED FOR EMAILJS
   validate() {
     const required = [
-      'EMAIL_HOST',
-      'EMAIL_USER',
-      'EMAIL_PASS'
+      'EMAILJS_SERVICE_ID',
+      'EMAILJS_ACTIVATION_TEMPLATE_ID',
+      'EMAILJS_RESET_TEMPLATE_ID',
+      'EMAILJS_PUBLIC_KEY',
+      'EMAILJS_PRIVATE_KEY'
     ];
     
     const missing = required.filter(key => !process.env[key]);
@@ -68,9 +74,9 @@ const config = {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
     
-    // Validate email configuration
-    if (!this.email.user || !this.email.pass) {
-      throw new Error('Email configuration is incomplete. Please check EMAIL_USER and EMAIL_PASS in .env file');
+    // Validate EmailJS configuration
+    if (!this.emailjs.serviceId || !this.emailjs.publicKey) {
+      throw new Error('EmailJS configuration is incomplete. Please check your EmailJS environment variables');
     }
     
     console.log('✅ Configuration validated successfully');
@@ -83,10 +89,11 @@ const config = {
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
     console.log(`   🚀 Port: ${this.port}`);
     console.log(`   📊 Database: ${this.mongodb.uri.replace(/\/\/.*@/, '//***:***@')}`);
-    console.log(`   📧 Email Host: ${this.email.host}:${this.email.port}`);
-    console.log(`   📧 Email User: ${this.email.user}`);
+    console.log(`   📧 Email Service: EmailJS`);
     console.log(`   📧 Email From: ${this.email.from}`);
-    console.log(`   🔑 Email Password: ${this.email.pass ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   🔑 EmailJS Service: ${this.emailjs.serviceId ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   🔑 EmailJS Templates: ${this.emailjs.activationTemplateId && this.emailjs.resetTemplateId ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   🔑 EmailJS API Keys: ${this.emailjs.publicKey ? '✅ Set' : '❌ Missing'}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
     console.log(`   🔗 All Frontend URLs: ${this.urls.frontendUrls.join(', ')}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);
