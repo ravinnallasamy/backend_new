@@ -6,6 +6,24 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const config = require('../config/config');
 
+// Add global error handlers to prevent crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.log('🔄 Unhandled Rejection caught:', reason);
+  // Don't exit the process - just log it
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('🔄 Uncaught Exception caught:', error.message);
+  // Don't exit the process for email-related errors
+  if (error.message.includes('email') || error.message.includes('fetch') || error.message.includes('EmailJS')) {
+    console.log('📧 Email error handled gracefully, continuing...');
+    return;
+  }
+  // Only exit for critical errors
+  console.error('🔴 Critical error, exiting:', error);
+  process.exit(1);
+});
+
 // Validate configuration on startup
 config.validate();
 
@@ -18,18 +36,23 @@ const emailjsConfig = {
   privateKey: process.env.EMAILJS_PRIVATE_KEY,
 };
 
-// Helper function to send emails with EmailJS REST API
+// Safe email sending function with comprehensive error handling
 async function sendEmailJS(templateId, templateParams) {
   try {
-    console.log('🔄 Sending email via EmailJS REST API...');
-    console.log('Template ID:', templateId);
-    console.log('To email:', templateParams.to_email);
+    console.log('🔄 Attempting to send email via EmailJS...');
+    console.log('📧 To:', templateParams.to_email);
+    console.log('📋 Template:', templateId);
     
+    // Validate required parameters
+    if (!templateId || !templateParams.to_email) {
+      console.log('⚠️ Missing required email parameters');
+      return { success: false, error: 'Missing required parameters' };
+    }
+
     const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       },
       body: JSON.stringify({
         service_id: emailjsConfig.serviceId,
@@ -40,17 +63,19 @@ async function sendEmailJS(templateId, templateParams) {
       })
     });
 
-    const result = await response.json();
-    
-    if (response.ok) {
-      console.log('✅ Email sent successfully via EmailJS');
-      return { success: true, data: result };
-    } else {
-      console.error('❌ EmailJS API error:', result);
-      return { success: false, error: result };
+    // Check if response is ok
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('❌ EmailJS API response not OK:', response.status, errorText);
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
     }
+
+    const result = await response.json();
+    console.log('✅ Email sent successfully via EmailJS');
+    return { success: true, data: result };
+    
   } catch (error) {
-    console.error('❌ EmailJS network error:', error);
+    console.log('⚠️ EmailJS request failed (non-critical):', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -104,7 +129,7 @@ router.post('/user/signin', async (req, res) => {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Signin error:', err);
     res.status(500).json("Internal Server Error");
   }
 });
@@ -139,7 +164,7 @@ router.post('/user/signup', async (req, res) => {
 
     await user.save();
 
-    // Send activation email with EmailJS
+    // Send activation email with EmailJS (non-blocking)
     const templateParams = {
       to_email: email,
       name: name,
@@ -147,17 +172,17 @@ router.post('/user/signup', async (req, res) => {
       email: email,
     };
 
-    // Send email but don't block response
+    // Send email in background - don't await
     sendEmailJS(emailjsConfig.activationTemplateId, templateParams)
       .then(result => {
         if (result.success) {
           console.log('✅ User activation email sent successfully');
         } else {
-          console.log('⚠️ User activation email failed:', result.error);
+          console.log('⚠️ User activation email failed (user still created):', result.error);
         }
       })
       .catch(err => {
-        console.error('Email sending error:', err);
+        console.log('🔴 Email sending error (non-critical):', err.message);
       });
 
     res.status(201).json({
@@ -303,7 +328,7 @@ router.post('/provider/signup', async (req, res) => {
     const provider = new Provider(providerData);
     await provider.save();
 
-    // Send activation email with EmailJS
+    // Send activation email with EmailJS (non-blocking)
     const templateParams = {
       to_email: email,
       name: name,
@@ -312,17 +337,17 @@ router.post('/provider/signup', async (req, res) => {
       business_name: businessName || 'Not specified'
     };
 
-    // Send email but don't block response
+    // Send email in background - don't await
     sendEmailJS(emailjsConfig.activationTemplateId, templateParams)
       .then(result => {
         if (result.success) {
           console.log('✅ Provider activation email sent successfully');
         } else {
-          console.log('⚠️ Provider activation email failed:', result.error);
+          console.log('⚠️ Provider activation email failed (provider still created):', result.error);
         }
       })
       .catch(err => {
-        console.error('Email sending error:', err);
+        console.log('🔴 Email sending error (non-critical):', err.message);
       });
 
     res.status(201).json({
@@ -410,7 +435,7 @@ router.post('/password/forgot', async (req, res) => {
     const frontendBase = (config.urls.frontend || '').replace(/\/+$/, '');
     const resetUrl = `${frontendBase}/reset-password/${token}`;
 
-    // Send reset email with EmailJS
+    // Send reset email with EmailJS (non-blocking)
     const templateParams = {
       to_email: email,
       name: account.name,
@@ -419,7 +444,7 @@ router.post('/password/forgot', async (req, res) => {
       time: new Date().toLocaleString(),
     };
 
-    // Send email but don't block response
+    // Send email in background - don't await
     sendEmailJS(emailjsConfig.resetTemplateId, templateParams)
       .then(result => {
         if (result.success) {
@@ -429,7 +454,7 @@ router.post('/password/forgot', async (req, res) => {
         }
       })
       .catch(err => {
-        console.error('Reset email error:', err);
+        console.log('🔴 Email sending error (non-critical):', err.message);
       });
 
     return res.status(200).json({ message: 'If the email exists, a reset link has been sent.' });
