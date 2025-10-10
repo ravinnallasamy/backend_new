@@ -16,21 +16,18 @@ const config = {
     activationSecret: process.env.JWT_ACTIVATION_SECRET || 'abcdefgh',
     resetSecret: process.env.JWT_RESET_SECRET || 'rstsecret',
     expiresIn: process.env.JWT_EXPIRE || '1d',
-    resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1d'
+    resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1h'
   },
   
-  // Email Configuration - UPDATED FOR EMAILJS
+  // Email Configuration - UPDATED FOR RESEND
   email: {
-    from: process.env.EMAIL_FROM || 'uzhavanrentals@gmail.com'
+    from: process.env.RESEND_FROM_EMAIL || 'Acme <onboarding@resend.dev>'
   },
   
-  // EmailJS Configuration - ADDED NEW SECTION
-  emailjs: {
-    serviceId: process.env.EMAILJS_SERVICE_ID,
-    activationTemplateId: process.env.EMAILJS_ACTIVATION_TEMPLATE_ID,
-    resetTemplateId: process.env.EMAILJS_RESET_TEMPLATE_ID,
-    publicKey: process.env.EMAILJS_PUBLIC_KEY,
-    privateKey: process.env.EMAILJS_PRIVATE_KEY
+  // Resend Configuration - ADDED NEW SECTION
+  resend: {
+    apiKey: process.env.RESEND_API_KEY,
+    fromEmail: process.env.RESEND_FROM_EMAIL || 'Acme <onboarding@resend.dev>'
   },
   
   // URL Configuration
@@ -58,14 +55,10 @@ const config = {
     version: process.env.API_VERSION || 'v1'
   },
   
-  // Validation - UPDATED FOR EMAILJS
+  // Validation - UPDATED FOR RESEND
   validate() {
     const required = [
-      'EMAILJS_SERVICE_ID',
-      'EMAILJS_ACTIVATION_TEMPLATE_ID',
-      'EMAILJS_RESET_TEMPLATE_ID',
-      'EMAILJS_PUBLIC_KEY',
-      'EMAILJS_PRIVATE_KEY'
+      'RESEND_API_KEY'
     ];
     
     const missing = required.filter(key => !process.env[key]);
@@ -74,24 +67,19 @@ const config = {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
     
-    // Validate EmailJS configuration with better error messages
-    if (!this.emailjs.serviceId) {
-      throw new Error('EmailJS Service ID is required. Check EMAILJS_SERVICE_ID in environment variables.');
-    }
-    if (!this.emailjs.activationTemplateId) {
-      throw new Error('EmailJS Activation Template ID is required. Check EMAILJS_ACTIVATION_TEMPLATE_ID in environment variables.');
-    }
-    if (!this.emailjs.resetTemplateId) {
-      throw new Error('EmailJS Reset Template ID is required. Check EMAILJS_RESET_TEMPLATE_ID in environment variables.');
-    }
-    if (!this.emailjs.publicKey) {
-      throw new Error('EmailJS Public Key is required. Check EMAILJS_PUBLIC_KEY in environment variables.');
-    }
-    if (!this.emailjs.privateKey) {
-      throw new Error('EmailJS Private Key is required. Check EMAILJS_PRIVATE_KEY in environment variables.');
+    // Validate Resend configuration with better error messages
+    if (!this.resend.apiKey) {
+      throw new Error('Resend API Key is required. Check RESEND_API_KEY in environment variables.');
     }
     
-    console.log('✅ EmailJS configuration validated successfully');
+    // Validate email format for from email
+    const fromEmail = this.resend.fromEmail;
+    if (!fromEmail || !fromEmail.includes('@')) {
+      console.warn('⚠️  Resend from email may not be properly formatted. Use format: "Your Name <email@domain.com>"');
+    }
+    
+    console.log('✅ Resend configuration validated successfully');
+    console.log('✅ Email service ready for activation and password reset emails');
     return true;
   },
   
@@ -101,17 +89,48 @@ const config = {
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
     console.log(`   🚀 Port: ${this.port}`);
     console.log(`   📊 Database: ${this.mongodb.uri.replace(/\/\/.*@/, '//***:***@')}`);
-    console.log(`   📧 Email Service: EmailJS`);
+    console.log(`   📧 Email Service: Resend`);
     console.log(`   📧 Email From: ${this.email.from}`);
-    console.log(`   🔑 EmailJS Service: ${this.emailjs.serviceId ? '✅ Configured' : '❌ Missing'}`);
-    console.log(`   🔑 Activation Template: ${this.emailjs.activationTemplateId ? '✅ Configured' : '❌ Missing'}`);
-    console.log(`   🔑 Reset Template: ${this.emailjs.resetTemplateId ? '✅ Configured' : '❌ Missing'}`);
-    console.log(`   🔑 EmailJS API Keys: ${this.emailjs.publicKey && this.emailjs.privateKey ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   🔑 Resend API Key: ${this.resend.apiKey ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   🔑 JWT Expires: ${this.jwt.expiresIn}`);
+    console.log(`   🔑 JWT Reset Expires: ${this.jwt.resetExpiresIn}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
     console.log(`   🔗 All Frontend URLs: ${this.urls.frontendUrls.join(', ')}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);
-    console.log(`   🔑 JWT Expires: ${this.jwt.expiresIn}`);
+    
+    // Security recommendations
+    if (this.jwt.secret === 'abcd' || this.jwt.activationSecret === 'abcdefgh') {
+      console.log('⚠️  Warning: Using default JWT secrets. Change them in production!');
+    }
+    
+    if (this.resend.fromEmail.includes('onboarding@resend.dev')) {
+      console.log('💡 Tip: Update RESEND_FROM_EMAIL to use your verified domain');
+    }
+  },
+  
+  // Helper method to check if email is configured properly
+  isEmailConfigured() {
+    return !!(this.resend.apiKey && this.resend.fromEmail);
+  },
+  
+  // Get email configuration safely
+  getEmailConfig() {
+    return {
+      apiKey: this.resend.apiKey,
+      fromEmail: this.resend.fromEmail,
+      isConfigured: this.isEmailConfigured()
+    };
   }
 };
+
+// Validate on require if in production
+if (config.nodeEnv === 'production') {
+  try {
+    config.validate();
+  } catch (error) {
+    console.error('❌ Configuration validation failed in production:', error.message);
+    process.exit(1);
+  }
+}
 
 module.exports = config;
