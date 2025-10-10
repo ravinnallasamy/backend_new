@@ -4,7 +4,6 @@ const User = require('../model/user');
 const Provider = require('../model/provider');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const emailjs = require('@emailjs/nodejs');
 const config = require('../config/config');
 
 // Validate configuration on startup
@@ -19,22 +18,39 @@ const emailjsConfig = {
   privateKey: process.env.EMAILJS_PRIVATE_KEY,
 };
 
-// Helper function to send emails with EmailJS
+// Helper function to send emails with EmailJS REST API
 async function sendEmailJS(templateId, templateParams) {
   try {
-    const result = await emailjs.send(
-      emailjsConfig.serviceId,
-      templateId,
-      templateParams,
-      {
-        publicKey: emailjsConfig.publicKey,
-        privateKey: emailjsConfig.privateKey,
-      }
-    );
-    console.log('✅ Email sent via EmailJS');
-    return { success: true, data: result };
+    console.log('🔄 Sending email via EmailJS REST API...');
+    console.log('Template ID:', templateId);
+    console.log('To email:', templateParams.to_email);
+    
+    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: JSON.stringify({
+        service_id: emailjsConfig.serviceId,
+        template_id: templateId,
+        user_id: emailjsConfig.publicKey,
+        accessToken: emailjsConfig.privateKey,
+        template_params: templateParams
+      })
+    });
+
+    const result = await response.json();
+    
+    if (response.ok) {
+      console.log('✅ Email sent successfully via EmailJS');
+      return { success: true, data: result };
+    } else {
+      console.error('❌ EmailJS API error:', result);
+      return { success: false, error: result };
+    }
   } catch (error) {
-    console.error('❌ EmailJS error:', error);
+    console.error('❌ EmailJS network error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -123,7 +139,7 @@ router.post('/user/signup', async (req, res) => {
 
     await user.save();
 
-    // Send activation email with EmailJS (don't wait for response)
+    // Send activation email with EmailJS
     const templateParams = {
       to_email: email,
       name: name,
@@ -131,12 +147,13 @@ router.post('/user/signup', async (req, res) => {
       email: email,
     };
 
+    // Send email but don't block response
     sendEmailJS(emailjsConfig.activationTemplateId, templateParams)
       .then(result => {
         if (result.success) {
           console.log('✅ User activation email sent successfully');
         } else {
-          console.log('⚠️ User activation email failed but user was created');
+          console.log('⚠️ User activation email failed:', result.error);
         }
       })
       .catch(err => {
@@ -286,7 +303,7 @@ router.post('/provider/signup', async (req, res) => {
     const provider = new Provider(providerData);
     await provider.save();
 
-    // Send activation email with EmailJS (don't wait for response)
+    // Send activation email with EmailJS
     const templateParams = {
       to_email: email,
       name: name,
@@ -295,12 +312,13 @@ router.post('/provider/signup', async (req, res) => {
       business_name: businessName || 'Not specified'
     };
 
+    // Send email but don't block response
     sendEmailJS(emailjsConfig.activationTemplateId, templateParams)
       .then(result => {
         if (result.success) {
           console.log('✅ Provider activation email sent successfully');
         } else {
-          console.log('⚠️ Provider activation email failed but provider was created');
+          console.log('⚠️ Provider activation email failed:', result.error);
         }
       })
       .catch(err => {
@@ -401,12 +419,13 @@ router.post('/password/forgot', async (req, res) => {
       time: new Date().toLocaleString(),
     };
 
+    // Send email but don't block response
     sendEmailJS(emailjsConfig.resetTemplateId, templateParams)
       .then(result => {
         if (result.success) {
           console.log('✅ Password reset email sent successfully');
         } else {
-          console.log('⚠️ Password reset email failed');
+          console.log('⚠️ Password reset email failed:', result.error);
         }
       })
       .catch(err => {

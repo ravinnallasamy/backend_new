@@ -21,7 +21,7 @@ const config = {
   
   // Email Configuration - UPDATED FOR EMAILJS
   email: {
-    from: process.env.EMAIL_FROM || 'uzhavanrentals@gmail.com' // Only need from address for EmailJS
+    from: process.env.EMAIL_FROM || 'uzhavanrentals@gmail.com'
   },
   
   // EmailJS Configuration - ADDED NEW SECTION
@@ -74,12 +74,24 @@ const config = {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
     
-    // Validate EmailJS configuration
-    if (!this.emailjs.serviceId || !this.emailjs.publicKey) {
-      throw new Error('EmailJS configuration is incomplete. Please check your EmailJS environment variables');
+    // Validate EmailJS configuration with better error messages
+    if (!this.emailjs.serviceId) {
+      throw new Error('EmailJS Service ID is required. Check EMAILJS_SERVICE_ID in environment variables.');
+    }
+    if (!this.emailjs.activationTemplateId) {
+      throw new Error('EmailJS Activation Template ID is required. Check EMAILJS_ACTIVATION_TEMPLATE_ID in environment variables.');
+    }
+    if (!this.emailjs.resetTemplateId) {
+      throw new Error('EmailJS Reset Template ID is required. Check EMAILJS_RESET_TEMPLATE_ID in environment variables.');
+    }
+    if (!this.emailjs.publicKey) {
+      throw new Error('EmailJS Public Key is required. Check EMAILJS_PUBLIC_KEY in environment variables.');
+    }
+    if (!this.emailjs.privateKey) {
+      throw new Error('EmailJS Private Key is required. Check EMAILJS_PRIVATE_KEY in environment variables.');
     }
     
-    console.log('✅ Configuration validated successfully');
+    console.log('✅ EmailJS configuration validated successfully');
     return true;
   },
   
@@ -92,8 +104,9 @@ const config = {
     console.log(`   📧 Email Service: EmailJS`);
     console.log(`   📧 Email From: ${this.email.from}`);
     console.log(`   🔑 EmailJS Service: ${this.emailjs.serviceId ? '✅ Configured' : '❌ Missing'}`);
-    console.log(`   🔑 EmailJS Templates: ${this.emailjs.activationTemplateId && this.emailjs.resetTemplateId ? '✅ Configured' : '❌ Missing'}`);
-    console.log(`   🔑 EmailJS API Keys: ${this.emailjs.publicKey ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   🔑 Activation Template: ${this.emailjs.activationTemplateId ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   🔑 Reset Template: ${this.emailjs.resetTemplateId ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   🔑 EmailJS API Keys: ${this.emailjs.publicKey && this.emailjs.privateKey ? '✅ Set' : '❌ Missing'}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
     console.log(`   🔗 All Frontend URLs: ${this.urls.frontendUrls.join(', ')}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);
