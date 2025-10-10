@@ -19,14 +19,14 @@ const config = {
     resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1d'
   },
   
-  // Email Configuration - UPDATED FOR RESEND
+  // Email Configuration - UPDATED FOR SMTP/NODEMAILER
   email: {
-    from: process.env.EMAIL_FROM || 'onboarding@resend.dev' // CHANGED: Only need from address
-  },
-  
-  // Resend Configuration - ADDED NEW SECTION
-  resend: {
-    apiKey: process.env.RESEND_API_KEY // ADDED: Resend API key
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.EMAIL_PORT) || 587,
+    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER // Use EMAIL_FROM or fallback to EMAIL_USER
   },
   
   // URL Configuration
@@ -54,11 +54,12 @@ const config = {
     version: process.env.API_VERSION || 'v1'
   },
   
-  // Validation - UPDATED FOR RESEND
+  // Validation - UPDATED FOR SMTP
   validate() {
     const required = [
-      'RESEND_API_KEY', // CHANGED: Now requires Resend API key
-      'EMAIL_FROM'      // CHANGED: Now requires email from address
+      'EMAIL_HOST',
+      'EMAIL_USER',
+      'EMAIL_PASS'
     ];
     
     const missing = required.filter(key => !process.env[key]);
@@ -67,9 +68,9 @@ const config = {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
     
-    // Validate Resend configuration - CHANGED
-    if (!this.resend.apiKey) {
-      throw new Error('Resend configuration is incomplete. Please check RESEND_API_KEY in .env file');
+    // Validate email configuration
+    if (!this.email.user || !this.email.pass) {
+      throw new Error('Email configuration is incomplete. Please check EMAIL_USER and EMAIL_PASS in .env file');
     }
     
     console.log('✅ Configuration validated successfully');
@@ -82,8 +83,10 @@ const config = {
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
     console.log(`   🚀 Port: ${this.port}`);
     console.log(`   📊 Database: ${this.mongodb.uri.replace(/\/\/.*@/, '//***:***@')}`);
-    console.log(`   📧 Email From: ${this.email.from}`); // CHANGED
-    console.log(`   🔑 Resend API Key: ${this.resend.apiKey ? '✅ Set' : '❌ Missing'}`); // ADDED
+    console.log(`   📧 Email Host: ${this.email.host}:${this.email.port}`);
+    console.log(`   📧 Email User: ${this.email.user}`);
+    console.log(`   📧 Email From: ${this.email.from}`);
+    console.log(`   🔑 Email Password: ${this.email.pass ? '✅ Set' : '❌ Missing'}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
     console.log(`   🔗 All Frontend URLs: ${this.urls.frontendUrls.join(', ')}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);

@@ -4,36 +4,22 @@ const User = require('../model/user');
 const Provider = require('../model/provider');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
+const config = require('../config/config');
 
-// Environment variables configuration
-const config = {
-  jwt: {
-    secret: process.env.JWT_SECRET || '123',
-    activationSecret: process.env.JWT_ACTIVATION_SECRET || '123',
-    resetSecret: process.env.JWT_RESET_SECRET || '123',
-    expiresIn: process.env.JWT_EXPIRE || '1d',
-    resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1h'
-  },
-  email: {
-    from: process.env.EMAIL_FROM || 'onboarding@resend.dev' // CHANGED: Use Resend's verified domain
-  },
-  urls: {
-    frontend: process.env.FRONTEND_URL || 'https://uzhavanrentals.netlify.app'
-  },
-  resend: {
-    apiKey: process.env.RESEND_API_KEY
+// Validate configuration on startup
+config.validate();
+
+// Email transporter configuration
+const transporter = nodemailer.createTransport({
+  host: config.email.host,
+  port: config.email.port,
+  secure: config.email.secure,
+  auth: {
+    user: config.email.user,
+    pass: config.email.pass
   }
-};
-
-// Validate required configuration
-if (!config.resend.apiKey) {
-  console.error('RESEND_API_KEY is required');
-  process.exit(1);
-}
-
-// Resend configuration
-const resend = new Resend(config.resend.apiKey);
+});
 
 // USER AUTHENTICATION ROUTES
 
@@ -106,59 +92,42 @@ router.post('/user/signup', async (req, res) => {
 
     console.log('Activation token generated:', activationToken);
 
-    const user = new User({
-      name,
-      email,
-      password: hashedPassword,
-      phone,
-      address,
-      userType: 'user',
-      token: activationToken
-    });
+    const mail = {
+      from: config.email.from,
+      to: email,
+      subject: "Welcome to Rental App - Activate Your Account",
+      html: `
+        <h1>Welcome ${name}!</h1>
+        <p>Thank you for joining our Agricultural Equipment Rental Platform.</p>
+        <p>Click the link below to activate your account:</p>
+        <a href='${config.urls.frontend}/?activate=${activationToken}'>Activate Account</a>
+        <p>If the link doesn't work, copy and paste this URL into your browser:</p>
+        <p>${config.urls.frontend}/?activate=${activationToken}</p>
+      `
+    };
 
-    await user.save();
+    transporter.sendMail(mail, async (err, success) => {
+      if (err) {
+        console.error('Email sending failed:', err);
+        res.status(400).json({ "message": "Failed to send activation email. Please verify your email address." });
+      } else {
+        const user = new User({
+          name,
+          email,
+          password: hashedPassword,
+          phone,
+          address,
+          userType: 'user',
+          token: activationToken
+        });
 
-    // Send activation email using Resend
-    try {
-      const { data, error } = await resend.emails.send({
-        from: config.email.from,
-        to: email,
-        subject: "Welcome to Rental App - Activate Your Account",
-        html: `
-          <h1>Welcome ${name}!</h1>
-          <p>Thank you for joining our Agricultural Equipment Rental Platform.</p>
-          <p>Click the link below to activate your account:</p>
-          <a href='${config.urls.frontend}/?activate=${activationToken}'>Activate Account</a>
-          <p>If the link doesn't work, copy and paste this URL into your browser:</p>
-          <p>${config.urls.frontend}/?activate=${activationToken}</p>
-        `
-      });
-
-      if (error) {
-        console.error('Resend email sending failed:', error);
-        // Still create the user but return a warning about email
-        return res.status(201).json({
-          "message": "Account created successfully! However, we encountered issues sending the activation email. Please contact support.",
-          "email": email,
-          "warning": true
+        await user.save();
+        res.status(201).json({
+          "message": "Account created successfully! Please check your email to activate your account.",
+          "email": email
         });
       }
-
-      console.log('Activation email sent via Resend:', data);
-      res.status(201).json({
-        "message": "Account created successfully! Please check your email to activate your account.",
-        "email": email
-      });
-
-    } catch (emailError) {
-      console.error('Email sending error:', emailError);
-      // Still create the user but return a warning
-      res.status(201).json({
-        "message": "Account created successfully! However, we encountered issues sending the activation email. Please contact support.",
-        "email": email,
-        "warning": true
-      });
-    }
+    });
 
   } catch (err) {
     console.error('Signup error:', err);
@@ -277,69 +246,53 @@ router.post('/provider/signup', async (req, res) => {
 
     console.log('Provider activation token generated:', activationToken);
 
-    // Prepare provider data with proper defaults
-    const providerData = {
-      name,
-      email,
-      password: hashedPassword,
-      phone,
-      address,
-      businessName: businessName || '',
-      licenseNumber: licenseNumber || '',
-      userType: 'provider',
-      token: activationToken
+    const mail = {
+      from: config.email.from,
+      to: email,
+      subject: "Welcome to Rental App - Provider Account Activation",
+      html: `
+        <h1>Welcome ${name}!</h1>
+        <p>Thank you for joining our Agricultural Equipment Rental Platform as a Provider.</p>
+        <p>Business: ${businessName || 'Not specified'}</p>
+        <p>Click the link below to activate your provider account:</p>
+        <a href='${config.urls.frontend}/?activate=${activationToken}'>Activate Provider Account</a>
+        <p>If the link doesn't work, copy and paste this URL into your browser:</p>
+        <p>${config.urls.frontend}/?activate=${activationToken}</p>
+      `
     };
 
-    // Only set businessType if it's not empty, let the model handle the default
-    if (businessType && businessType.trim() !== '') {
-      providerData.businessType = businessType;
-    }
+    transporter.sendMail(mail, async (err, success) => {
+      if (err) {
+        console.error('Email sending failed:', err);
+        res.status(400).json({ "message": "Failed to send activation email. Please verify your email address." });
+      } else {
+        // Prepare provider data with proper defaults
+        const providerData = {
+          name,
+          email,
+          password: hashedPassword,
+          phone,
+          address,
+          businessName: businessName || '',
+          licenseNumber: licenseNumber || '',
+          userType: 'provider',
+          token: activationToken
+        };
 
-    const provider = new Provider(providerData);
-    await provider.save();
+        // Only set businessType if it's not empty, let the model handle the default
+        if (businessType && businessType.trim() !== '') {
+          providerData.businessType = businessType;
+        }
 
-    // Send activation email using Resend
-    try {
-      const { data, error } = await resend.emails.send({
-        from: config.email.from,
-        to: email,
-        subject: "Welcome to Rental App - Provider Account Activation",
-        html: `
-          <h1>Welcome ${name}!</h1>
-          <p>Thank you for joining our Agricultural Equipment Rental Platform as a Provider.</p>
-          <p>Business: ${businessName || 'Not specified'}</p>
-          <p>Click the link below to activate your provider account:</p>
-          <a href='${config.urls.frontend}/?activate=${activationToken}'>Activate Provider Account</a>
-          <p>If the link doesn't work, copy and paste this URL into your browser:</p>
-          <p>${config.urls.frontend}/?activate=${activationToken}</p>
-        `
-      });
+        const provider = new Provider(providerData);
 
-      if (error) {
-        console.error('Resend email sending failed:', error);
-        // Still create the provider but return a warning about email
-        return res.status(201).json({
-          "message": "Provider account created successfully! However, we encountered issues sending the activation email. Please contact support.",
-          "email": email,
-          "warning": true
+        await provider.save();
+        res.status(201).json({
+          "message": "Provider account created successfully! Please check your email to activate your account.",
+          "email": email
         });
       }
-
-      console.log('Provider activation email sent via Resend:', data);
-      res.status(201).json({
-        "message": "Provider account created successfully! Please check your email to activate your account.",
-        "email": email
-      });
-
-    } catch (emailError) {
-      console.error('Provider email sending error:', emailError);
-      // Still create the provider but return a warning
-      res.status(201).json({
-        "message": "Provider account created successfully! However, we encountered issues sending the activation email. Please contact support.",
-        "email": email,
-        "warning": true
-      });
-    }
+    });
 
   } catch (err) {
     console.error('Provider signup error:', err);
@@ -420,31 +373,24 @@ router.post('/password/forgot', async (req, res) => {
 
     const frontendBase = (config.urls.frontend || '').replace(/\/+$/, '');
     const resetUrl = `${frontendBase}/reset-password/${token}`;
+    const mail = {
+      from: config.email.from,
+      to: email,
+      subject: 'Reset your password',
+      html: `
+        <h2>Password Reset</h2>
+        <p>We received a request to reset your password. Click the link below to set a new password:</p>
+        <a href='${resetUrl}'>Reset Password</a>
+        <p>This link will expire in ${config.jwt.resetExpiresIn}.</p>
+        <p>If you did not request this, you can safely ignore this email.</p>
+      `
+    };
 
-    // Send reset email using Resend
-    try {
-      const { data, error } = await resend.emails.send({
-        from: config.email.from,
-        to: email,
-        subject: 'Reset your password',
-        html: `
-          <h2>Password Reset</h2>
-          <p>We received a request to reset your password. Click the link below to set a new password:</p>
-          <a href='${resetUrl}'>Reset Password</a>
-          <p>This link will expire in ${config.jwt.resetExpiresIn}.</p>
-          <p>If you did not request this, you can safely ignore this email.</p>
-        `
-      });
-
-      if (error) {
-        console.error('Resend reset email send error:', error);
-      } else {
-        console.log('Password reset email sent via Resend:', data);
+    transporter.sendMail(mail, (err) => {
+      if (err) {
+        console.error('Reset email send error:', err);
       }
-
-    } catch (emailError) {
-      console.error('Password reset email sending error:', emailError);
-    }
+    });
 
     return res.status(200).json({ message: 'If the email exists, a reset link has been sent.' });
   } catch (err) {
