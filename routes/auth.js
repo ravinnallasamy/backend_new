@@ -16,7 +16,7 @@ const config = {
     resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1h'
   },
   email: {
-    from: process.env.EMAIL_FROM || 'noreply@uzhavanrentals.com'
+    from: process.env.EMAIL_FROM || 'onboarding@resend.dev' // CHANGED: Use Resend's verified domain
   },
   urls: {
     frontend: process.env.FRONTEND_URL || 'https://uzhavanrentals.netlify.app'
