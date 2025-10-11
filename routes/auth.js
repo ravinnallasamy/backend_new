@@ -86,7 +86,7 @@ function generateStrongToken() {
   );
 }
 
-// Enhanced email sending function with comprehensive features
+// Enhanced email sending function - sends directly to users
 async function sendResendEmail(to, subject, html, text = null) {
   try {
     // Test mode - don't send actual emails in test environment
@@ -95,12 +95,9 @@ async function sendResendEmail(to, subject, html, text = null) {
       return { success: true, data: { id: 'test-mode', test: true } };
     }
 
-    // Development mode logging
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 Attempting to send email via Resend...');
-      console.log('📧 To:', to);
-      console.log('📋 Subject:', subject);
-    }
+    console.log('🔄 Attempting to send email via Resend...');
+    console.log('📧 To:', to);
+    console.log('📋 Subject:', subject);
 
     // Validate required parameters
     if (!to || !subject || !html) {
@@ -116,58 +113,31 @@ async function sendResendEmail(to, subject, html, text = null) {
 
     const emailData = {
       from: process.env.RESEND_FROM_EMAIL || 'Uzhavan Rentals <onboarding@resend.dev>',
-      to: to,
-      subject: subject.substring(0, 78), // Limit subject length
+      to: to, // Send directly to the user's email
+      subject: subject.substring(0, 78),
       html: html,
     };
 
     // Add text version if provided
     if (text) {
-      emailData.text = text.substring(0, 100000); // Limit text length
+      emailData.text = text.substring(0, 100000);
     }
-
-    // Add headers for tracking
-    emailData.headers = {
-      'X-Application': 'Uzhavan-Rentals',
-      'X-Environment': process.env.NODE_ENV || 'development',
-    };
 
     const { data, error } = await resend.emails.send(emailData);
 
     if (error) {
       console.log('❌ Resend API error:', error);
-      
-      // Categorize errors for better handling
-      const errorCategories = {
-        'validation_error': 'Email validation failed',
-        'rate_limit_exceeded': 'Email rate limit exceeded',
-        'invalid_api_key': 'Invalid Resend API key',
-        'domain_not_verified': 'Domain not verified in Resend'
-      };
-      
-      let errorMessage = error.message;
-      for (const [key, message] of Object.entries(errorCategories)) {
-        if (error.message.includes(key)) {
-          errorMessage = message;
-          break;
-        }
-      }
-      
-      return { success: false, error: errorMessage, details: error };
+      return { success: false, error: error.message };
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ Email sent successfully via Resend, ID:', data?.id);
-    }
-
+    console.log('✅ Email sent successfully via Resend, ID:', data?.id);
     return { success: true, data: data };
     
   } catch (error) {
-    console.log('⚠️ Resend request failed (non-critical):', error.message);
+    console.log('⚠️ Resend request failed:', error.message);
     return { 
       success: false, 
-      error: 'Email service temporarily unavailable',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: 'Email service temporarily unavailable'
     };
   }
 }
@@ -197,8 +167,6 @@ function generateActivationEmail(name, activationUrl, userType = 'user') {
           .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 14px; border-top: 1px solid #e9ecef; }
           .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 20px 0; }
           .code-block { background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #e9ecef; margin: 15px 0; word-break: break-all; font-family: monospace; }
-          .social-links { margin: 20px 0; }
-          .social-links a { color: #4CAF50; text-decoration: none; margin: 0 10px; }
         </style>
       </head>
       <body>
@@ -210,40 +178,26 @@ function generateActivationEmail(name, activationUrl, userType = 'user') {
           
           <div class="content">
             <h2>Hello ${sanitizeInput(name)},</h2>
-            <p>Thank you for registering as a ${typeText} with Uzhavan Rentals! We're excited to have you join our agricultural community.</p>
+            <p>Thank you for registering as a ${typeText} with Uzhavan Rentals!</p>
             
-            <p>To get started and access all features, please activate your account by clicking the button below:</p>
+            <p>To activate your account, please click the button below:</p>
             
             <p style="text-align: center;">
               <a href="${activationUrl}" class="button">Activate Your Account</a>
             </p>
             
             <div class="warning">
-              <strong>⚠️ Important:</strong> This activation link will expire in 24 hours for security reasons.
+              <strong>⚠️ Important:</strong> This activation link will expire in 24 hours.
             </div>
             
-            <p>If the button doesn't work, copy and paste the following URL into your browser:</p>
+            <p>If the button doesn't work, copy and paste this URL into your browser:</p>
             <div class="code-block">${activationUrl}</div>
             
-            <p>Once activated, you'll be able to:</p>
-            <ul style="margin: 15px 0; padding-left: 20px;">
-              ${userType === 'provider' 
-                ? '<li>List your equipment for rent</li><li>Manage rental requests</li><li>Connect with farmers</li><li>Grow your business</li>'
-                : '<li>Browse available equipment</li><li>Make rental requests</li><li>Contact providers</li><li>Manage your rentals</li>'
-              }
-            </ul>
-            
-            <p>If you didn't create this account, please ignore this email. Your email address will not be used for any other purpose.</p>
-            
-            <div class="social-links">
-              <p>Need help? Contact our support team:</p>
-              <p>📧 <a href="mailto:support@uzhavanrentals.com">support@uzhavanrentals.com</a></p>
-            </div>
+            <p>If you didn't create this account, please ignore this email.</p>
           </div>
           
           <div class="footer">
             <p>&copy; ${currentYear} Uzhavan Rentals. All rights reserved.</p>
-            <p>Building a stronger agricultural community together.</p>
           </div>
         </div>
       </body>
@@ -256,23 +210,14 @@ function generateActivationEmail(name, activationUrl, userType = 'user') {
 
       Thank you for registering as a ${typeText} with Uzhavan Rentals!
 
-      To activate your account, please visit the following link:
+      To activate your account, please visit:
       ${activationUrl}
 
       This activation link will expire in 24 hours.
 
-      Once activated, you'll be able to:
-      ${userType === 'provider' 
-        ? '- List your equipment for rent\n- Manage rental requests\n- Connect with farmers\n- Grow your business'
-        : '- Browse available equipment\n- Make rental requests\n- Contact providers\n- Manage your rentals'
-      }
-
       If you didn't create this account, please ignore this email.
 
-      Need help? Contact our support team: support@uzhavanrentals.com
-
       © ${currentYear} Uzhavan Rentals. All rights reserved.
-      Building a stronger agricultural community together.
     `
   };
 }
@@ -300,7 +245,6 @@ function generatePasswordResetEmail(name, resetUrl) {
           .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 14px; border-top: 1px solid #e9ecef; }
           .warning { background: #ffebee; border: 1px solid #ffcdd2; padding: 15px; border-radius: 6px; margin: 20px 0; }
           .code-block { background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #e9ecef; margin: 15px 0; word-break: break-all; font-family: monospace; }
-          .security-note { background: #e8f5e8; border: 1px solid #c8e6c9; padding: 15px; border-radius: 6px; margin: 20px 0; }
         </style>
       </head>
       <body>
@@ -312,36 +256,24 @@ function generatePasswordResetEmail(name, resetUrl) {
           
           <div class="content">
             <h2>Hello ${sanitizeInput(name)},</h2>
-            <p>We received a request to reset your password for your Uzhavan Rentals account.</p>
+            <p>We received a request to reset your password.</p>
             
             <p style="text-align: center;">
               <a href="${resetUrl}" class="button">Reset Your Password</a>
             </p>
             
             <div class="warning">
-              <strong>🔒 Security Notice:</strong> This password reset link will expire in 1 hour for your protection.
+              <strong>🔒 Security Notice:</strong> This link will expire in 1 hour.
             </div>
             
-            <p>If the button doesn't work, copy and paste this URL into your browser:</p>
+            <p>If the button doesn't work, copy and paste this URL:</p>
             <div class="code-block">${resetUrl}</div>
             
-            <div class="security-note">
-              <strong>💡 Important:</strong>
-              <ul style="margin: 10px 0; padding-left: 20px;">
-                <li>Never share your password with anyone</li>
-                <li>Use a strong, unique password</li>
-                <li>Enable two-factor authentication if available</li>
-              </ul>
-            </div>
-            
-            <p>If you didn't request this password reset, please ignore this email. Your account remains secure, and no changes have been made.</p>
-            
-            <p>For security reasons, this request was initiated from IP: [System will log this automatically]</p>
+            <p>If you didn't request this, please ignore this email.</p>
           </div>
           
           <div class="footer">
             <p>&copy; ${currentYear} Uzhavan Rentals. All rights reserved.</p>
-            <p>Protecting your account security is our priority.</p>
           </div>
         </div>
       </body>
@@ -352,24 +284,16 @@ function generatePasswordResetEmail(name, resetUrl) {
 
       Hello ${name},
 
-      We received a request to reset your password for your Uzhavan Rentals account.
+      We received a request to reset your password.
 
-      To reset your password, visit this link:
+      To reset your password, visit:
       ${resetUrl}
 
-      🔒 Security Notice: This password reset link will expire in 1 hour.
+      This link will expire in 1 hour.
 
-      If the link doesn't work, copy and paste the URL into your browser.
-
-      💡 Security Tips:
-      - Never share your password with anyone
-      - Use a strong, unique password
-      - Enable two-factor authentication if available
-
-      If you didn't request this password reset, please ignore this email. Your account remains secure.
+      If you didn't request this, please ignore this email.
 
       © ${currentYear} Uzhavan Rentals. All rights reserved.
-      Protecting your account security is our priority.
     `
   };
 }
@@ -402,10 +326,6 @@ const validateSignup = (req, res, next) => {
   
   if (!isValidPassword(password)) {
     return res.status(400).json({ error: "Password must be at least 6 characters long" });
-  }
-  
-  if (name.length < 2 || name.length > 50) {
-    return res.status(400).json({ error: "Name must be between 2 and 50 characters" });
   }
   
   // Sanitize inputs
@@ -444,27 +364,18 @@ router.post('/user/signin', signinLimiter, async (req, res) => {
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
-      // Log failed login attempt
       console.log(`🔐 Failed login attempt for email: ${email}`);
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // Generate secure token
     const token = jwt.sign({
       email: user.email,
       id: user._id,
-      userType: 'user',
-      sessionId: generateStrongToken()
+      userType: 'user'
     }, config.jwt.secret, { 
-      expiresIn: config.jwt.expiresIn,
-      issuer: 'uzhavan-rentals',
-      subject: user._id.toString()
+      expiresIn: config.jwt.expiresIn
     });
 
-    // Update last login
-    await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
-
-    // Return user data for frontend (exclude sensitive info)
     const userData = {
       id: user._id,
       name: user.name,
@@ -472,23 +383,20 @@ router.post('/user/signin', signinLimiter, async (req, res) => {
       phone: user.phone,
       address: user.address,
       userType: 'user',
-      isActivated: user.isActivated,
-      createdAt: user.createdAt
+      isActivated: user.isActivated
     };
 
     res.status(200).json({
       success: true,
       token,
       user: userData,
-      message: "Login successful",
-      expiresIn: config.jwt.expiresIn
+      message: "Login successful"
     });
 
   } catch (err) {
     console.error('Signin error:', err);
     res.status(500).json({ 
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -500,55 +408,55 @@ router.post('/user/signup', signupLimiter, validateSignup, async (req, res) => {
 
     console.log('User signup attempt:', email);
 
-    // Check if user already exists
-    const userExist = await User.findOne({ email: email.toLowerCase() });
+    // Enhanced duplicate check
+    const normalizedEmail = email.toLowerCase().trim();
+    const userExist = await User.findOne({ email: normalizedEmail });
+    
     if (userExist) {
+      console.log('❌ User already exists:', normalizedEmail);
       return res.status(400).json({ 
         error: "Email already registered",
         details: "This email address is already associated with an account" 
       });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
     const activationToken = jwt.sign(
       { 
-        email: email.toLowerCase(),
-        type: 'activation',
-        timestamp: Date.now()
+        email: normalizedEmail,
+        type: 'activation'
       }, 
       config.jwt.activationSecret, 
       { expiresIn: '24h' }
     );
 
-    console.log('Activation token generated for:', email);
+    console.log('Activation token generated for:', normalizedEmail);
 
     // Create user
     const user = new User({
       name,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       password: hashedPassword,
       phone,
       address: address || '',
       userType: 'user',
       token: activationToken,
-      activationTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      activationTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000)
     });
 
     await user.save();
 
-    // Send activation email with Resend (non-blocking)
+    // Send activation email with Resend
     const activationUrl = `${config.urls.frontend}/activate/${activationToken}`;
     const emailContent = generateActivationEmail(name, activationUrl, 'user');
 
-    // Send email in background
-    sendResendEmail(email, emailContent.subject, emailContent.html, emailContent.text)
+    // Send email directly to user
+    sendResendEmail(normalizedEmail, emailContent.subject, emailContent.html, emailContent.text)
       .then(result => {
         if (result.success) {
-          console.log('✅ User activation email sent successfully to:', email);
+          console.log('✅ User activation email sent successfully to:', normalizedEmail);
         } else {
           console.log('⚠️ User activation email failed:', result.error);
-          // You might want to log this to a monitoring service
         }
       })
       .catch(err => {
@@ -558,14 +466,13 @@ router.post('/user/signup', signupLimiter, validateSignup, async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Account created successfully! Please check your email to activate your account.",
-      email: email,
+      email: normalizedEmail,
       note: "If you don't see the email, check your spam folder"
     });
 
   } catch (err) {
     console.error('Signup error:', err);
     
-    // Handle specific errors
     if (err.name === 'ValidationError') {
       return res.status(400).json({
         error: "Validation failed",
@@ -573,9 +480,16 @@ router.post('/user/signup', signupLimiter, validateSignup, async (req, res) => {
       });
     }
     
+    // Handle duplicate key errors
+    if (err.code === 11000) {
+      return res.status(400).json({
+        error: "Email already registered",
+        details: "This email address is already in use"
+      });
+    }
+    
     res.status(500).json({ 
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -611,21 +525,19 @@ router.get('/user/activate/:token', async (req, res) => {
     if (!user) {
       return res.status(400).json({ 
         error: "Invalid or expired activation link",
-        details: "Please request a new activation link if this one has expired"
+        details: "Please request a new activation link"
       });
     }
 
-    // Generate login token for automatic login after activation
     const loginToken = jwt.sign({
       email: user.email,
       id: user._id,
       userType: 'user'
     }, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
 
-    // Return success response
     res.status(200).json({
       success: true,
-      message: "Account activated successfully! You can now log in to your account.",
+      message: "Account activated successfully!",
       email: user.email,
       userType: "user",
       id: user._id,
@@ -646,14 +558,14 @@ router.get('/user/activate/:token', async (req, res) => {
     if (err.name === 'TokenExpiredError') {
       return res.status(400).json({ 
         error: "Activation link expired",
-        details: "Please request a new activation link from the signin page"
+        details: "Please request a new activation link"
       });
     }
     
     if (err.name === 'JsonWebTokenError') {
       return res.status(400).json({ 
         error: "Invalid activation link",
-        details: "The activation link is invalid or has already been used"
+        details: "The activation link is invalid"
       });
     }
     
@@ -697,16 +609,10 @@ router.post('/provider/signin', signinLimiter, async (req, res) => {
     const token = jwt.sign({
       email: provider.email,
       id: provider._id,
-      userType: 'provider',
-      sessionId: generateStrongToken()
+      userType: 'provider'
     }, config.jwt.secret, { 
-      expiresIn: config.jwt.expiresIn,
-      issuer: 'uzhavan-rentals',
-      subject: provider._id.toString()
+      expiresIn: config.jwt.expiresIn
     });
-
-    // Update last login
-    await Provider.findByIdAndUpdate(provider._id, { lastLogin: new Date() });
 
     const providerData = {
       id: provider._id,
@@ -717,23 +623,20 @@ router.post('/provider/signin', signinLimiter, async (req, res) => {
       businessName: provider.businessName,
       businessType: provider.businessType,
       userType: 'provider',
-      isActivated: provider.isActivated,
-      createdAt: provider.createdAt
+      isActivated: provider.isActivated
     };
 
     res.status(200).json({
       success: true,
       token,
       user: providerData,
-      message: "Login successful",
-      expiresIn: config.jwt.expiresIn
+      message: "Login successful"
     });
 
   } catch (err) {
     console.error('Provider signin error:', err);
     res.status(500).json({ 
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -748,7 +651,8 @@ router.post('/provider/signup', signupLimiter, validateSignup, async (req, res) 
 
     console.log('Provider signup attempt:', email);
 
-    const providerExist = await Provider.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase().trim();
+    const providerExist = await Provider.findOne({ email: normalizedEmail });
     if (providerExist) {
       return res.status(400).json({ 
         error: "Email already registered",
@@ -759,19 +663,18 @@ router.post('/provider/signup', signupLimiter, validateSignup, async (req, res) 
     const hashedPassword = await bcrypt.hash(password, 12);
     const activationToken = jwt.sign(
       { 
-        email: email.toLowerCase(),
-        type: 'activation',
-        timestamp: Date.now()
+        email: normalizedEmail,
+        type: 'activation'
       }, 
       config.jwt.activationSecret, 
       { expiresIn: '24h' }
     );
 
-    console.log('Provider activation token generated for:', email);
+    console.log('Provider activation token generated for:', normalizedEmail);
 
     const providerData = {
       name: sanitizeInput(name),
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       password: hashedPassword,
       phone,
       address: address || '',
@@ -789,14 +692,14 @@ router.post('/provider/signup', signupLimiter, validateSignup, async (req, res) 
     const provider = new Provider(providerData);
     await provider.save();
 
-    // Send activation email
+    // Send activation email directly to provider
     const activationUrl = `${config.urls.frontend}/activate/${activationToken}`;
     const emailContent = generateActivationEmail(name, activationUrl, 'provider');
 
-    sendResendEmail(email, emailContent.subject, emailContent.html, emailContent.text)
+    sendResendEmail(normalizedEmail, emailContent.subject, emailContent.html, emailContent.text)
       .then(result => {
         if (result.success) {
-          console.log('✅ Provider activation email sent successfully to:', email);
+          console.log('✅ Provider activation email sent successfully to:', normalizedEmail);
         } else {
           console.log('⚠️ Provider activation email failed:', result.error);
         }
@@ -808,7 +711,7 @@ router.post('/provider/signup', signupLimiter, validateSignup, async (req, res) 
     res.status(201).json({
       success: true,
       message: "Provider account created successfully! Please check your email to activate your account.",
-      email: email,
+      email: normalizedEmail,
       note: "If you don't see the email, check your spam folder"
     });
 
@@ -822,9 +725,15 @@ router.post('/provider/signup', signupLimiter, validateSignup, async (req, res) 
       });
     }
     
+    if (err.code === 11000) {
+      return res.status(400).json({
+        error: "Email already registered",
+        details: "This email address is already in use"
+      });
+    }
+    
     res.status(500).json({ 
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -860,7 +769,7 @@ router.get('/provider/activate/:token', async (req, res) => {
     if (!provider) {
       return res.status(400).json({ 
         error: "Invalid or expired activation link",
-        details: "Please request a new activation link if this one has expired"
+        details: "Please request a new activation link"
       });
     }
 
@@ -872,7 +781,7 @@ router.get('/provider/activate/:token', async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Provider account activated successfully! You can now log in to your account.",
+      message: "Provider account activated successfully!",
       email: provider.email,
       userType: "provider",
       id: provider._id,
@@ -895,14 +804,14 @@ router.get('/provider/activate/:token', async (req, res) => {
     if (err.name === 'TokenExpiredError') {
       return res.status(400).json({ 
         error: "Activation link expired",
-        details: "Please request a new activation link from the signin page"
+        details: "Please request a new activation link"
       });
     }
     
     if (err.name === 'JsonWebTokenError') {
       return res.status(400).json({ 
         error: "Invalid activation link",
-        details: "The activation link is invalid or has already been used"
+        details: "The activation link is invalid"
       });
     }
     
@@ -942,20 +851,10 @@ router.post('/password/forgot', passwordResetLimiter, async (req, res) => {
       });
     }
 
-    // Check if there's already a valid reset token
-    if (account.passwordResetExpires && account.passwordResetExpires > new Date()) {
-      return res.status(200).json({
-        success: true,
-        message: "A password reset link has already been sent. Please check your email.",
-        note: "Previous reset link is still valid for 1 hour"
-      });
-    }
-
     const payload = { 
       email: email.toLowerCase(), 
       userType,
-      purpose: 'password_reset',
-      timestamp: Date.now()
+      purpose: 'password_reset'
     };
     
     const token = jwt.sign(payload, config.jwt.resetSecret, { 
@@ -970,7 +869,7 @@ router.post('/password/forgot', passwordResetLimiter, async (req, res) => {
     const frontendBase = (config.urls.frontend || '').replace(/\/+$/, '');
     const resetUrl = `${frontendBase}/reset-password/${token}`;
 
-    // Send reset email
+    // Send reset email directly to user/provider
     const emailContent = generatePasswordResetEmail(account.name, resetUrl);
 
     sendResendEmail(email, emailContent.subject, emailContent.html, emailContent.text)
@@ -993,8 +892,7 @@ router.post('/password/forgot', passwordResetLimiter, async (req, res) => {
   } catch (err) {
     console.error('Forgot password error:', err);
     return res.status(500).json({ 
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -1045,47 +943,7 @@ router.post('/password/reset', async (req, res) => {
     account.password = hashedPassword;
     account.passwordResetToken = null;
     account.passwordResetExpires = null;
-    account.lastPasswordChange = new Date();
     await account.save();
-
-    // Send confirmation email (optional)
-    const confirmationEmail = {
-      subject: 'Password Updated Successfully - Uzhavan Rentals',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: #4CAF50; color: white; padding: 20px; text-align: center;">
-            <h1>Password Updated Successfully</h1>
-          </div>
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2>Hello ${account.name},</h2>
-            <p>Your password has been successfully updated for your Uzhavan Rentals account.</p>
-            <p>If you did not make this change, please contact our support team immediately.</p>
-            <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <strong>Security Tip:</strong> Always use a strong, unique password and enable two-factor authentication when available.
-            </div>
-          </div>
-        </div>
-      `,
-      text: `
-        Password Updated Successfully
-
-        Hello ${account.name},
-
-        Your password has been successfully updated for your Uzhavan Rentals account.
-
-        If you did not make this change, please contact our support team immediately.
-
-        Security Tip: Always use a strong, unique password and enable two-factor authentication when available.
-      `
-    };
-
-    // Send confirmation in background
-    sendResendEmail(account.email, confirmationEmail.subject, confirmationEmail.html, confirmationEmail.text)
-      .then(result => {
-        if (result.success) {
-          console.log('✅ Password change confirmation sent to:', account.email);
-        }
-      });
 
     return res.status(200).json({ 
       success: true,
@@ -1095,8 +953,7 @@ router.post('/password/reset', async (req, res) => {
   } catch (err) {
     console.error('Reset password error:', err);
     return res.status(500).json({ 
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -1145,8 +1002,7 @@ router.get('/password/reset/verify/:token', async (req, res) => {
     console.error('Verify reset token error:', err);
     return res.status(500).json({ 
       valid: false, 
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -1191,8 +1047,7 @@ router.post('/verify-password', async (req, res) => {
     console.error('Password verification error:', err);
     res.status(500).json({
       success: false,
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });
@@ -1230,8 +1085,7 @@ router.post('/resend-activation', async (req, res) => {
     const activationToken = jwt.sign(
       { 
         email: email.toLowerCase(),
-        type: 'activation',
-        timestamp: Date.now()
+        type: 'activation'
       }, 
       config.jwt.activationSecret, 
       { expiresIn: '24h' }
@@ -1242,7 +1096,7 @@ router.post('/resend-activation', async (req, res) => {
     account.activationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await account.save();
 
-    // Send activation email
+    // Send activation email directly to user/provider
     const activationUrl = `${config.urls.frontend}/activate/${activationToken}`;
     const emailContent = generateActivationEmail(account.name, activationUrl, userType);
 
@@ -1265,8 +1119,7 @@ router.post('/resend-activation', async (req, res) => {
   } catch (err) {
     console.error('Resend activation error:', err);
     res.status(500).json({
-      error: "Internal server error",
-      ...(process.env.NODE_ENV === 'development' && { details: err.message })
+      error: "Internal server error"
     });
   }
 });

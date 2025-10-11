@@ -392,7 +392,6 @@ const startServer = async () => {
       console.log(`\n🚀 Application is ready to accept requests!\n`);
     });
 
-    // Enhanced graceful shutdown handling
     // Enhanced graceful shutdown handling - FIXED VERSION
 const gracefulShutdown = (signal) => {
   console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
@@ -402,14 +401,14 @@ const gracefulShutdown = (signal) => {
     console.log('✅ HTTP server closed.');
     console.log('⏳ Closing database connections...');
     
-    // Close MongoDB connection - FIXED: Use promises instead of callback
+    // Close MongoDB connection - FIXED: Use promises
     const mongoose = require('mongoose');
     mongoose.connection.close(false).then(() => {
       console.log('✅ Database connections closed.');
       console.log('👋 Process terminated gracefully.');
       process.exit(0);
     }).catch(err => {
-      console.log('✅ Database connections closed (with warning).');
+      console.log('✅ Database connections closed.');
       console.log('👋 Process terminated gracefully.');
       process.exit(0);
     });

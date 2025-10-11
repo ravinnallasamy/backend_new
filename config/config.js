@@ -10,21 +10,19 @@ const config = {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/rental_app_db'
   },
   
-  // JWT Configuration - ENHANCED
+  // JWT Configuration
   jwt: {
     secret: process.env.JWT_SECRET || 'your-super-secure-jwt-secret-change-in-production',
     activationSecret: process.env.JWT_ACTIVATION_SECRET || 'your-activation-secret-key-change-this-too',
     resetSecret: process.env.JWT_RESET_SECRET || 'your-reset-secret-key-and-this-one-too',
     expiresIn: process.env.JWT_EXPIRE || '7d',
     resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1h',
-    activationExpiresIn: '24h' // Fixed for activation emails
+    activationExpiresIn: '24h'
   },
   
-  // Email Configuration - ENHANCED
+  // Email Configuration - SIMPLIFIED
   email: {
-    from: process.env.RESEND_FROM_EMAIL || 'Uzhavan Rentals <onboarding@resend.dev>',
-    developerRedirect: process.env.DEVELOPER_EMAIL_REDIRECT === 'true',
-    developerEmail: process.env.DEVELOPER_EMAIL
+    from: process.env.RESEND_FROM_EMAIL || 'Uzhavan Rentals <onboarding@resend.dev>'
   },
   
   // Resend Configuration
@@ -33,14 +31,14 @@ const config = {
     fromEmail: process.env.RESEND_FROM_EMAIL || 'Uzhavan Rentals <onboarding@resend.dev>'
   },
   
-  // URL Configuration - ENHANCED
+  // URL Configuration
   urls: {
     frontend: process.env.FRONTEND_URL || 'http://localhost:3000',
     userFrontend: process.env.USER_FRONTEND_URL || 'http://localhost:3000',
     providerFrontend: process.env.PROVIDER_FRONTEND_URL || 'http://localhost:3001',
     backend: process.env.BACKEND_URL || 'http://localhost:5000',
-    activationPath: '/activate', // Added for activation URLs
-    resetPath: '/reset-password', // Added for password reset URLs
+    activationPath: '/activate',
+    resetPath: '/reset-password',
     frontendUrls: process.env.FRONTEND_URLS ?
       process.env.FRONTEND_URLS.split(',').map(url => url.trim()) :
       [
@@ -57,34 +55,16 @@ const config = {
   
   // API Configuration
   api: {
-    version: process.env.API_VERSION || 'v1',
-    rateLimit: {
-      signup: {
-        windowMs: 15 * 60 * 1000, // 15 minutes
-        max: 5 // 5 attempts per window
-      },
-      signin: {
-        windowMs: 15 * 60 * 1000, // 15 minutes
-        max: 10 // 10 attempts per window
-      },
-      passwordReset: {
-        windowMs: 60 * 60 * 1000, // 1 hour
-        max: 5 // 5 attempts per hour
-      }
-    }
+    version: process.env.API_VERSION || 'v1'
   },
 
-  // Security Configuration - NEW SECTION
+  // Security Configuration
   security: {
     password: {
-      minLength: 6,
-      requireSpecialChar: false, // Can be enabled for stronger passwords
-      requireNumbers: false,
-      requireUppercase: false
+      minLength: 6
     },
     rateLimiting: {
-      enabled: true,
-      skipSuccessfulRequests: true
+      enabled: true
     },
     cors: {
       enabled: true,
@@ -92,7 +72,7 @@ const config = {
     }
   },
   
-  // Validation - ENHANCED
+  // Validation - SIMPLIFIED
   validate() {
     const required = [
       'RESEND_API_KEY',
@@ -130,29 +110,12 @@ const config = {
       }
     }
     
-    // Validate email format
-    const fromEmail = this.resend.fromEmail;
-    if (!fromEmail || !fromEmail.includes('@') || !fromEmail.includes('<') || !fromEmail.includes('>')) {
-      console.warn('⚠️  Resend from email may not be properly formatted. Use format: "Your Name <email@domain.com>"');
-    }
-
-    // Validate URLs
-    if (!this.urls.frontend) {
-      console.warn('⚠️  Frontend URL not set. Activation emails may not work properly.');
-    }
-
-    // Validate database connection
-    if (!this.mongodb.uri || this.mongodb.uri.includes('localhost')) {
-      console.warn('⚠️  Using local database. For production, use MongoDB Atlas or another cloud database.');
-    }
-    
     console.log('✅ Configuration validated successfully');
     console.log('✅ Email service (Resend) ready for activation and password reset emails');
-    console.log('✅ Security features enabled');
     return true;
   },
   
-  // Display current configuration (without sensitive data) - ENHANCED
+  // Display current configuration - SIMPLIFIED
   display() {
     console.log('\n📋 ===== APPLICATION CONFIGURATION =====');
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
@@ -163,12 +126,8 @@ const config = {
     console.log(`   🔑 Resend API Key: ${this.resend.apiKey ? '✅ Configured' : '❌ Missing'}`);
     console.log(`   🔑 JWT Expires: ${this.jwt.expiresIn}`);
     console.log(`   🔑 JWT Reset Expires: ${this.jwt.resetExpiresIn}`);
-    console.log(`   🔑 JWT Activation Expires: ${this.jwt.activationExpiresIn}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
-    console.log(`   🔗 Activation Path: ${this.urls.activationPath}`);
-    console.log(`   🔗 Reset Path: ${this.urls.resetPath}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);
-    console.log(`   🔒 Rate Limiting: ${this.security.rateLimiting.enabled ? '✅ Enabled' : '❌ Disabled'}`);
     
     // Security status
     console.log('\n🔒 ===== SECURITY STATUS =====');
@@ -203,10 +162,6 @@ const config = {
       console.log('   💡 Tip: Update FRONTEND_URL to your production domain');
     }
 
-    if (this.email.developerRedirect) {
-      console.log('   🔄 Developer Mode: All emails redirected to:', this.email.developerEmail);
-    }
-
     console.log('==========================================\n');
   },
   
@@ -220,9 +175,7 @@ const config = {
     return {
       apiKey: this.resend.apiKey,
       fromEmail: this.resend.fromEmail,
-      isConfigured: this.isEmailConfigured(),
-      developerRedirect: this.email.developerRedirect,
-      developerEmail: this.email.developerEmail
+      isConfigured: this.isEmailConfigured()
     };
   },
 
@@ -248,11 +201,6 @@ const config = {
   // Check if running in production mode
   isProduction() {
     return this.nodeEnv === 'production';
-  },
-
-  // Get rate limit configuration
-  getRateLimitConfig(type) {
-    return this.api.rateLimit[type] || { windowMs: 900000, max: 5 }; // Default fallback
   }
 };
 
