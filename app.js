@@ -50,6 +50,10 @@ try {
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 
+// ========== IMPORTANT FIX: Trust proxy for rate limiting ==========
+// This must be set BEFORE any middleware that uses rate limiting
+app.set('trust proxy', 1); // Trust first proxy
+
 // Middleware
 app.use(logger('dev'));
 
@@ -384,7 +388,7 @@ const startServer = async () => {
       console.log(`🔗 Backend URL: ${config.urls.backend}`);
       console.log(`🔗 Frontend URL: ${config.urls.frontend}`);
       console.log(`📧 Email Service: ${config.isEmailConfigured() ? 'Resend ✅' : 'Not Configured ⚠️'}`);
-      console.log(`🔒 Security: Helmet ✅ CORS ✅ Rate Limiting ✅`);
+      console.log(`🔒 Security: Helmet ✅ CORS ✅ Rate Limiting ✅ Trust Proxy ✅`);
       console.log(`\n🚀 Application is ready to accept requests!\n`);
     });
 
