@@ -17,6 +17,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const cors = require('cors');
+const helmet = require('helmet'); // Added for security headers
 
 // Import configuration and database connection
 const config = require('./config/config');
@@ -51,6 +52,12 @@ app.set('view engine', 'jade');
 
 // Middleware
 app.use(logger('dev'));
+
+// Security middleware - Added Helmet for security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Disable CSP for API (can be configured later)
+}));
 
 // Enhanced CORS configuration to allow frontend connections from multiple ports
 app.use(cors({
@@ -117,17 +124,36 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-API-Key'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id', 'X-Response-Time'],
   preflightContinue: false,
   optionsSuccessStatus: 200,
   maxAge: 86400 // 24 hours
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+// Body parsing middleware with better limits
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf; // Store raw body for signature verification if needed
+  }
+}));
+app.use(express.urlencoded({ 
+  extended: true, // Changed to true for better nested object support
+  limit: '10mb' 
+}));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Request logging middleware - Enhanced
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
+  });
+  next();
+});
 
 // API Routes
 app.use('/', indexRouter);
@@ -139,18 +165,27 @@ app.use('/api/requests', requestsRouter);
 
 // Enhanced Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({
+  const healthCheck = {
     status: 'OK',
     message: 'Agricultural Equipment Rental Platform Backend is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
+    environment: config.nodeEnv,
     version: '1.0.0',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
     services: {
       database: 'MongoDB',
       email: config.isEmailConfigured() ? 'Resend (Configured)' : 'Resend (Not Configured)',
-      authentication: 'JWT'
+      authentication: 'JWT',
+      rateLimiting: 'Enabled'
     }
-  });
+  };
+  
+  // Add database connection status if possible
+  const mongoose = require('mongoose');
+  healthCheck.services.databaseStatus = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
+  
+  res.json(healthCheck);
 });
 
 // Enhanced Root endpoint
@@ -189,6 +224,13 @@ app.get('/', (req, res) => {
           margin: 20px 0; 
           border-left: 4px solid #4CAF50;
         }
+        .warning { 
+          background: #fff3cd; 
+          padding: 15px; 
+          border-radius: 5px; 
+          margin: 20px 0; 
+          border-left: 4px solid #ffc107;
+        }
         .endpoints { 
           text-align: left; 
           margin: 30px 0; 
@@ -211,6 +253,12 @@ app.get('/', (req, res) => {
         a:hover { 
           text-decoration: underline; 
         }
+        .footer {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 1px solid #dee2e6;
+          color: #6c757d;
+        }
       </style>
     </head>
     <body>
@@ -220,24 +268,51 @@ app.get('/', (req, res) => {
           <strong>✅ Backend server is running successfully!</strong>
         </div>
         
-        <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</p>
+        <p><strong>Environment:</strong> ${config.nodeEnv}</p>
         <p><strong>Email Service:</strong> ${config.isEmailConfigured() ? '✅ Resend Configured' : '⚠️ Resend Not Configured'}</p>
+        <p><strong>Database:</strong> ${config.mongodb.uri.includes('localhost') ? '🔧 Development' : '☁️ Production'}</p>
+        
+        ${!config.isEmailConfigured() ? `
+          <div class="warning">
+            <strong>⚠️ Email service not configured:</strong> Activation emails will not be sent until Resend is properly configured.
+          </div>
+        ` : ''}
         
         <div class="endpoints">
           <h3>📊 Available Endpoints:</h3>
           <div class="endpoint"><a href="/health">/health</a> - API status and service information</div>
-          <div class="endpoint"><a href="/api/auth">/api/auth</a> - Authentication endpoints</div>
+          <div class="endpoint"><a href="/api/auth">/api/auth</a> - Authentication endpoints (Signup, Login, Password Reset)</div>
           <div class="endpoint"><a href="/api/users">/api/users</a> - User management</div>
           <div class="endpoint"><a href="/api/providers">/api/providers</a> - Provider management</div>
           <div class="endpoint"><a href="/api/equipments">/api/equipments</a> - Equipment management</div>
           <div class="endpoint"><a href="/api/requests">/api/requests</a> - Rental requests</div>
         </div>
         
-        <p>For API documentation, please refer to the project README.</p>
+        <div class="footer">
+          <p><strong>Server:</strong> ${config.urls.backend}</p>
+          <p><strong>Frontend:</strong> ${config.urls.frontend}</p>
+          <p>For API documentation, please refer to the project README.</p>
+        </div>
       </div>
     </body>
     </html>
   `);
+});
+
+// 404 handler for API routes - Enhanced
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    error: 'Endpoint not found',
+    message: `The requested API endpoint ${req.originalUrl} does not exist`,
+    availableEndpoints: [
+      '/api/auth',
+      '/api/users', 
+      '/api/providers',
+      '/api/equipments',
+      '/api/requests',
+      '/health'
+    ]
+  });
 });
 
 // catch 404 and forward to error handler
@@ -247,8 +322,14 @@ app.use(function(req, res, next) {
 
 // Enhanced error handler
 app.use(function(err, req, res, next) {
-  // Log error
-  console.error('🔴 Error:', err.message);
+  // Log error with more context
+  console.error('🔴 Error:', {
+    message: err.message,
+    url: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
+    stack: config.isDevelopment() ? err.stack : undefined
+  });
   
   // set locals, only providing error in development
   res.locals.message = err.message;
@@ -256,13 +337,21 @@ app.use(function(err, req, res, next) {
 
   // If it's an API route, return JSON error
   if (req.path.startsWith('/api/')) {
-    return res.status(err.status || 500).json({
+    const errorResponse = {
       error: {
         message: err.message,
         status: err.status || 500,
-        ...(req.app.get('env') === 'development' && { stack: err.stack })
+        timestamp: new Date().toISOString(),
+        path: req.originalUrl
       }
-    });
+    };
+    
+    // Add stack trace in development
+    if (config.isDevelopment()) {
+      errorResponse.error.stack = err.stack;
+    }
+    
+    return res.status(err.status || 500).json(errorResponse);
   }
 
   // render the error page for non-API routes
@@ -292,18 +381,29 @@ const startServer = async () => {
       console.log(`🌐 Environment: ${config.nodeEnv}`);
       console.log(`🔗 Local: http://localhost:${PORT}`);
       console.log(`🔗 Network: http://0.0.0.0:${PORT}`);
+      console.log(`🔗 Backend URL: ${config.urls.backend}`);
+      console.log(`🔗 Frontend URL: ${config.urls.frontend}`);
       console.log(`📧 Email Service: ${config.isEmailConfigured() ? 'Resend ✅' : 'Not Configured ⚠️'}`);
+      console.log(`🔒 Security: Helmet ✅ CORS ✅ Rate Limiting ✅`);
       console.log(`\n🚀 Application is ready to accept requests!\n`);
     });
 
     // Enhanced graceful shutdown handling
     const gracefulShutdown = (signal) => {
       console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+      console.log('⏳ Closing HTTP server...');
+      
       server.close(() => {
         console.log('✅ HTTP server closed.');
-        console.log('✅ Database connections closed.');
-        console.log('👋 Process terminated gracefully.');
-        process.exit(0);
+        console.log('⏳ Closing database connections...');
+        
+        // Close MongoDB connection
+        const mongoose = require('mongoose');
+        mongoose.connection.close(false, () => {
+          console.log('✅ Database connections closed.');
+          console.log('👋 Process terminated gracefully.');
+          process.exit(0);
+        });
       });
 
       // Force close after 10 seconds
