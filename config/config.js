@@ -20,15 +20,21 @@ const config = {
     activationExpiresIn: '24h'
   },
   
-  // Email Configuration - SIMPLIFIED
+  // Email Configuration - UPDATED FOR NODEMAILER
   email: {
-    from: process.env.RESEND_FROM_EMAIL || 'Uzhavan Rentals <onboarding@resend.dev>'
+    service: 'gmail',
+    user: process.env.GMAIL_USER || 'your.email@gmail.com',
+    appPassword: process.env.GMAIL_APP_PASSWORD,
+    from: process.env.GMAIL_USER || 'Uzhavan Rentals <your.email@gmail.com>'
   },
   
-  // Resend Configuration
-  resend: {
-    apiKey: process.env.RESEND_API_KEY,
-    fromEmail: process.env.RESEND_FROM_EMAIL || 'Uzhavan Rentals <onboarding@resend.dev>'
+  // Nodemailer Configuration - NEW
+  nodemailer: {
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD
+    }
   },
   
   // URL Configuration
@@ -72,10 +78,11 @@ const config = {
     }
   },
   
-  // Validation - SIMPLIFIED
+  // Validation - UPDATED FOR NODEMAILER
   validate() {
     const required = [
-      'RESEND_API_KEY',
+      'GMAIL_USER',
+      'GMAIL_APP_PASSWORD',
       'JWT_SECRET',
       'JWT_ACTIVATION_SECRET', 
       'JWT_RESET_SECRET'
@@ -87,9 +94,9 @@ const config = {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
     
-    // Validate Resend configuration
-    if (!this.resend.apiKey) {
-      throw new Error('Resend API Key is required. Check RESEND_API_KEY in environment variables.');
+    // Validate Gmail configuration
+    if (!this.email.user || !this.email.appPassword) {
+      throw new Error('Gmail configuration is required. Check GMAIL_USER and GMAIL_APP_PASSWORD in environment variables.');
     }
 
     // Validate JWT secrets in production
@@ -111,19 +118,20 @@ const config = {
     }
     
     console.log('✅ Configuration validated successfully');
-    console.log('✅ Email service (Resend) ready for activation and password reset emails');
+    console.log('✅ Email service (Nodemailer/Gmail) ready for activation and password reset emails');
     return true;
   },
   
-  // Display current configuration - SIMPLIFIED
+  // Display current configuration - UPDATED FOR NODEMAILER
   display() {
     console.log('\n📋 ===== APPLICATION CONFIGURATION =====');
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
     console.log(`   🚀 Port: ${this.port}`);
     console.log(`   📊 Database: ${this.mongodb.uri.replace(/\/\/.*@/, '//***:***@')}`);
-    console.log(`   📧 Email Service: Resend`);
+    console.log(`   📧 Email Service: Nodemailer (Gmail)`);
     console.log(`   📧 Email From: ${this.email.from}`);
-    console.log(`   🔑 Resend API Key: ${this.resend.apiKey ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   📧 Gmail User: ${this.email.user}`);
+    console.log(`   🔑 Gmail App Password: ${this.email.appPassword ? '✅ Configured' : '❌ Missing'}`);
     console.log(`   🔑 JWT Expires: ${this.jwt.expiresIn}`);
     console.log(`   🔑 JWT Reset Expires: ${this.jwt.resetExpiresIn}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
@@ -150,8 +158,8 @@ const config = {
       console.log('   ❌ CRITICAL: Change default JWT secrets in production!');
     }
     
-    if (this.resend.fromEmail.includes('onboarding@resend.dev')) {
-      console.log('   💡 Tip: Update RESEND_FROM_EMAIL to use your verified domain');
+    if (this.email.user.includes('your.email@gmail.com')) {
+      console.log('   💡 Tip: Update GMAIL_USER to use your actual Gmail address');
     }
     
     if (!usingProductionDB && this.nodeEnv === 'production') {
@@ -165,17 +173,29 @@ const config = {
     console.log('==========================================\n');
   },
   
-  // Helper method to check if email is configured properly
+  // Helper method to check if email is configured properly - UPDATED
   isEmailConfigured() {
-    return !!(this.resend.apiKey && this.resend.fromEmail);
+    return !!(this.email.user && this.email.appPassword);
   },
   
-  // Get email configuration safely
+  // Get email configuration safely - UPDATED
   getEmailConfig() {
     return {
-      apiKey: this.resend.apiKey,
-      fromEmail: this.resend.fromEmail,
+      service: this.email.service,
+      user: this.email.user,
+      from: this.email.from,
       isConfigured: this.isEmailConfigured()
+    };
+  },
+
+  // Get Nodemailer configuration - NEW
+  getNodemailerConfig() {
+    return {
+      service: this.nodemailer.service,
+      auth: {
+        user: this.nodemailer.auth.user,
+        pass: this.nodemailer.auth.pass
+      }
     };
   },
 

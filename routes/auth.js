@@ -5,7 +5,7 @@ const Provider = require('../model/provider');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const config = require('../config/config');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
 
 // Add global error handlers to prevent crashes
@@ -15,7 +15,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 process.on('uncaughtException', (error) => {
   console.error('🔄 Uncaught Exception caught:', error.message);
-  if (error.message.includes('email') || error.message.includes('fetch') || error.message.includes('Resend')) {
+  if (error.message.includes('email') || error.message.includes('fetch') || error.message.includes('Nodemailer')) {
     console.log('📧 Email error handled gracefully, continuing...');
     return;
   }
@@ -26,8 +26,16 @@ process.on('uncaughtException', (error) => {
 // Validate configuration on startup
 config.validate();
 
-// Resend configuration
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Nodemailer configuration
+const createTransporter = () => {
+  return nodemailer.createTransporter({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER, // Your Gmail address
+      pass: process.env.GMAIL_APP_PASSWORD, // Your Gmail app password
+    },
+  });
+};
 
 // Rate limiting configurations
 const signupLimiter = rateLimit({
@@ -86,16 +94,16 @@ function generateStrongToken() {
   );
 }
 
-// Enhanced email sending function - sends directly to users
-async function sendResendEmail(to, subject, html, text = null) {
+// Enhanced email sending function using Nodemailer
+async function sendNodemailerEmail(to, subject, html, text = null) {
   try {
     // Test mode - don't send actual emails in test environment
     if (process.env.NODE_ENV === 'test') {
       console.log('📧 TEST MODE: Email would be sent to:', to);
-      return { success: true, data: { id: 'test-mode', test: true } };
+      return { success: true, data: { messageId: 'test-mode', test: true } };
     }
 
-    console.log('🔄 Attempting to send email via Resend...');
+    console.log('🔄 Attempting to send email via Nodemailer...');
     console.log('📧 To:', to);
     console.log('📋 Subject:', subject);
 
@@ -111,33 +119,36 @@ async function sendResendEmail(to, subject, html, text = null) {
       return { success: false, error: 'Invalid recipient email' };
     }
 
-    const emailData = {
-      from: process.env.RESEND_FROM_EMAIL || 'Uzhavan Rentals <onboarding@resend.dev>',
-      to: to, // Send directly to the user's email
+    // Check if Gmail credentials are available
+    if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+      console.log('⚠️ Gmail credentials not configured');
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const transporter = createTransporter();
+
+    const mailOptions = {
+      from: process.env.GMAIL_USER, // Your Gmail address
+      to: to,
       subject: subject.substring(0, 78),
       html: html,
     };
 
     // Add text version if provided
     if (text) {
-      emailData.text = text.substring(0, 100000);
+      mailOptions.text = text.substring(0, 100000);
     }
 
-    const { data, error } = await resend.emails.send(emailData);
+    const result = await transporter.sendMail(mailOptions);
 
-    if (error) {
-      console.log('❌ Resend API error:', error);
-      return { success: false, error: error.message };
-    }
-
-    console.log('✅ Email sent successfully via Resend, ID:', data?.id);
-    return { success: true, data: data };
+    console.log('✅ Email sent successfully via Nodemailer, Message ID:', result.messageId);
+    return { success: true, data: result };
     
   } catch (error) {
-    console.log('⚠️ Resend request failed:', error.message);
+    console.log('⚠️ Nodemailer request failed:', error.message);
     return { 
       success: false, 
-      error: 'Email service temporarily unavailable'
+      error: 'Email service temporarily unavailable: ' + error.message
     };
   }
 }
@@ -446,12 +457,12 @@ router.post('/user/signup', signupLimiter, validateSignup, async (req, res) => {
 
     await user.save();
 
-    // Send activation email with Resend
+    // Send activation email with Nodemailer
     const activationUrl = `${config.urls.frontend}/activate/${activationToken}`;
     const emailContent = generateActivationEmail(name, activationUrl, 'user');
 
     // Send email directly to user
-    sendResendEmail(normalizedEmail, emailContent.subject, emailContent.html, emailContent.text)
+    sendNodemailerEmail(normalizedEmail, emailContent.subject, emailContent.html, emailContent.text)
       .then(result => {
         if (result.success) {
           console.log('✅ User activation email sent successfully to:', normalizedEmail);
@@ -692,11 +703,11 @@ router.post('/provider/signup', signupLimiter, validateSignup, async (req, res) 
     const provider = new Provider(providerData);
     await provider.save();
 
-    // Send activation email directly to provider
+    // Send activation email directly to provider using Nodemailer
     const activationUrl = `${config.urls.frontend}/activate/${activationToken}`;
     const emailContent = generateActivationEmail(name, activationUrl, 'provider');
 
-    sendResendEmail(normalizedEmail, emailContent.subject, emailContent.html, emailContent.text)
+    sendNodemailerEmail(normalizedEmail, emailContent.subject, emailContent.html, emailContent.text)
       .then(result => {
         if (result.success) {
           console.log('✅ Provider activation email sent successfully to:', normalizedEmail);
@@ -869,10 +880,10 @@ router.post('/password/forgot', passwordResetLimiter, async (req, res) => {
     const frontendBase = (config.urls.frontend || '').replace(/\/+$/, '');
     const resetUrl = `${frontendBase}/reset-password/${token}`;
 
-    // Send reset email directly to user/provider
+    // Send reset email directly to user/provider using Nodemailer
     const emailContent = generatePasswordResetEmail(account.name, resetUrl);
 
-    sendResendEmail(email, emailContent.subject, emailContent.html, emailContent.text)
+    sendNodemailerEmail(email, emailContent.subject, emailContent.html, emailContent.text)
       .then(result => {
         if (result.success) {
           console.log('✅ Password reset email sent successfully to:', email);
@@ -1096,11 +1107,11 @@ router.post('/resend-activation', async (req, res) => {
     account.activationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await account.save();
 
-    // Send activation email directly to user/provider
+    // Send activation email directly to user/provider using Nodemailer
     const activationUrl = `${config.urls.frontend}/activate/${activationToken}`;
     const emailContent = generateActivationEmail(account.name, activationUrl, userType);
 
-    const emailResult = await sendResendEmail(email, emailContent.subject, emailContent.html, emailContent.text);
+    const emailResult = await sendNodemailerEmail(email, emailContent.subject, emailContent.html, emailContent.text);
 
     if (emailResult.success) {
       res.json({
@@ -1134,7 +1145,7 @@ router.get('/health', (req, res) => {
     features: {
       userAuth: true,
       providerAuth: true,
-      emailService: config.isEmailConfigured(),
+      emailService: !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD),
       passwordReset: true,
       rateLimiting: true
     }

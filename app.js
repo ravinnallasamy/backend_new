@@ -179,7 +179,7 @@ app.get('/health', (req, res) => {
     memory: process.memoryUsage(),
     services: {
       database: 'MongoDB',
-      email: config.isEmailConfigured() ? 'Resend (Configured)' : 'Resend (Not Configured)',
+      email: config.isEmailConfigured() ? 'Nodemailer/Gmail (Configured)' : 'Nodemailer/Gmail (Not Configured)', // UPDATED
       authentication: 'JWT',
       rateLimiting: 'Enabled'
     }
@@ -273,12 +273,12 @@ app.get('/', (req, res) => {
         </div>
         
         <p><strong>Environment:</strong> ${config.nodeEnv}</p>
-        <p><strong>Email Service:</strong> ${config.isEmailConfigured() ? '✅ Resend Configured' : '⚠️ Resend Not Configured'}</p>
+        <p><strong>Email Service:</strong> ${config.isEmailConfigured() ? '✅ Nodemailer/Gmail Configured' : '⚠️ Nodemailer/Gmail Not Configured'}</p> <!-- UPDATED -->
         <p><strong>Database:</strong> ${config.mongodb.uri.includes('localhost') ? '🔧 Development' : '☁️ Production'}</p>
         
         ${!config.isEmailConfigured() ? `
           <div class="warning">
-            <strong>⚠️ Email service not configured:</strong> Activation emails will not be sent until Resend is properly configured.
+            <strong>⚠️ Email service not configured:</strong> Activation emails will not be sent until Gmail is properly configured.
           </div>
         ` : ''}
         
@@ -370,11 +370,11 @@ const startServer = async () => {
     await connectDB();
     console.log('✅ MongoDB connected successfully');
 
-    // Check email configuration
+    // Check email configuration - UPDATED
     if (config.isEmailConfigured()) {
-      console.log('✅ Email service (Resend) is configured and ready');
+      console.log('✅ Email service (Nodemailer/Gmail) is configured and ready');
     } else {
-      console.log('⚠️  Email service (Resend) is not configured. Activation emails will not be sent.');
+      console.log('⚠️  Email service (Nodemailer/Gmail) is not configured. Activation emails will not be sent.');
     }
 
     // Start the server after successful database connection
@@ -387,39 +387,39 @@ const startServer = async () => {
       console.log(`🔗 Network: http://0.0.0.0:${PORT}`);
       console.log(`🔗 Backend URL: ${config.urls.backend}`);
       console.log(`🔗 Frontend URL: ${config.urls.frontend}`);
-      console.log(`📧 Email Service: ${config.isEmailConfigured() ? 'Resend ✅' : 'Not Configured ⚠️'}`);
+      console.log(`📧 Email Service: ${config.isEmailConfigured() ? 'Nodemailer/Gmail ✅' : 'Not Configured ⚠️'}`); // UPDATED
       console.log(`🔒 Security: Helmet ✅ CORS ✅ Rate Limiting ✅ Trust Proxy ✅`);
       console.log(`\n🚀 Application is ready to accept requests!\n`);
     });
 
     // Enhanced graceful shutdown handling - FIXED VERSION
-const gracefulShutdown = (signal) => {
-  console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
-  console.log('⏳ Closing HTTP server...');
-  
-  server.close(() => {
-    console.log('✅ HTTP server closed.');
-    console.log('⏳ Closing database connections...');
-    
-    // Close MongoDB connection - FIXED: Use promises
-    const mongoose = require('mongoose');
-    mongoose.connection.close(false).then(() => {
-      console.log('✅ Database connections closed.');
-      console.log('👋 Process terminated gracefully.');
-      process.exit(0);
-    }).catch(err => {
-      console.log('✅ Database connections closed.');
-      console.log('👋 Process terminated gracefully.');
-      process.exit(0);
-    });
-  });
+    const gracefulShutdown = (signal) => {
+      console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+      console.log('⏳ Closing HTTP server...');
+      
+      server.close(() => {
+        console.log('✅ HTTP server closed.');
+        console.log('⏳ Closing database connections...');
+        
+        // Close MongoDB connection - FIXED: Use promises
+        const mongoose = require('mongoose');
+        mongoose.connection.close(false).then(() => {
+          console.log('✅ Database connections closed.');
+          console.log('👋 Process terminated gracefully.');
+          process.exit(0);
+        }).catch(err => {
+          console.log('✅ Database connections closed.');
+          console.log('👋 Process terminated gracefully.');
+          process.exit(0);
+        });
+      });
 
-  // Force close after 10 seconds
-  setTimeout(() => {
-    console.error('❌ Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 10000);
-};
+      // Force close after 10 seconds
+      setTimeout(() => {
+        console.error('❌ Could not close connections in time, forcefully shutting down');
+        process.exit(1);
+      }, 10000);
+    };
 
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
