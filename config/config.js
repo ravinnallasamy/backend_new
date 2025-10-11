@@ -28,14 +28,14 @@ const config = {
     from: process.env.GMAIL_USER || 'Uzhavan Rentals <your.email@gmail.com>'
   },
   
-  // Nodemailer Configuration - NEW
-  nodemailer: {
-    service: 'gmail',
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD
-    }
-  },
+  // Nodemailer Configuration - CORRECTED
+nodemailer: {
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD
+  }
+},
   
   // URL Configuration
   urls: {

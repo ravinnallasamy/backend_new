@@ -27,8 +27,9 @@ process.on('uncaughtException', (error) => {
 config.validate();
 
 // Nodemailer configuration
+// Nodemailer configuration - CORRECTED VERSION
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.GMAIL_USER, // Your Gmail address
@@ -36,7 +37,6 @@ const createTransporter = () => {
     },
   });
 };
-
 // Rate limiting configurations
 const signupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -95,6 +95,7 @@ function generateStrongToken() {
 }
 
 // Enhanced email sending function using Nodemailer
+// Enhanced email sending function using Nodemailer - CORRECTED
 async function sendNodemailerEmail(to, subject, html, text = null) {
   try {
     // Test mode - don't send actual emails in test environment
@@ -125,7 +126,13 @@ async function sendNodemailerEmail(to, subject, html, text = null) {
       return { success: false, error: 'Email service not configured' };
     }
 
-    const transporter = createTransporter();
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
 
     const mailOptions = {
       from: process.env.GMAIL_USER, // Your Gmail address
