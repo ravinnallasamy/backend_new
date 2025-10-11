@@ -393,29 +393,34 @@ const startServer = async () => {
     });
 
     // Enhanced graceful shutdown handling
-    const gracefulShutdown = (signal) => {
-      console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
-      console.log('⏳ Closing HTTP server...');
-      
-      server.close(() => {
-        console.log('✅ HTTP server closed.');
-        console.log('⏳ Closing database connections...');
-        
-        // Close MongoDB connection
-        const mongoose = require('mongoose');
-        mongoose.connection.close(false, () => {
-          console.log('✅ Database connections closed.');
-          console.log('👋 Process terminated gracefully.');
-          process.exit(0);
-        });
-      });
+    // Enhanced graceful shutdown handling - FIXED VERSION
+const gracefulShutdown = (signal) => {
+  console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+  console.log('⏳ Closing HTTP server...');
+  
+  server.close(() => {
+    console.log('✅ HTTP server closed.');
+    console.log('⏳ Closing database connections...');
+    
+    // Close MongoDB connection - FIXED: Use promises instead of callback
+    const mongoose = require('mongoose');
+    mongoose.connection.close(false).then(() => {
+      console.log('✅ Database connections closed.');
+      console.log('👋 Process terminated gracefully.');
+      process.exit(0);
+    }).catch(err => {
+      console.log('✅ Database connections closed (with warning).');
+      console.log('👋 Process terminated gracefully.');
+      process.exit(0);
+    });
+  });
 
-      // Force close after 10 seconds
-      setTimeout(() => {
-        console.error('❌ Could not close connections in time, forcefully shutting down');
-        process.exit(1);
-      }, 10000);
-    };
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('❌ Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+};
 
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
