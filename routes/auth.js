@@ -127,8 +127,8 @@ async function sendNodemailerEmail(to, subject, html, text = null) {
     // Try multiple SMTP configurations
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // Use TLS
+      port: 465,
+      secure: true, // Use TLS
       requireTLS: true,
       auth: {
         user: process.env.GMAIL_USER,
