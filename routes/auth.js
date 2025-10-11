@@ -96,14 +96,9 @@ function generateStrongToken() {
 
 // Enhanced email sending function using Nodemailer
 // Enhanced email sending function using Nodemailer - CORRECTED
+// Enhanced Nodemailer configuration with better timeout handling
 async function sendNodemailerEmail(to, subject, html, text = null) {
   try {
-    // Test mode - don't send actual emails in test environment
-    if (process.env.NODE_ENV === 'test') {
-      console.log('📧 TEST MODE: Email would be sent to:', to);
-      return { success: true, data: { messageId: 'test-mode', test: true } };
-    }
-
     console.log('🔄 Attempting to send email via Nodemailer...');
     console.log('📧 To:', to);
     console.log('📋 Subject:', subject);
@@ -126,16 +121,33 @@ async function sendNodemailerEmail(to, subject, html, text = null) {
       return { success: false, error: 'Email service not configured' };
     }
 
+    console.log('🔑 Gmail User:', process.env.GMAIL_USER);
+    console.log('🔑 App Password:', process.env.GMAIL_APP_PASSWORD ? '✅ Set' : '❌ Missing');
+
+    // Try multiple SMTP configurations
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // Use TLS
+      requireTLS: true,
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
       },
+      connectionTimeout: 30000, // 30 seconds
+      socketTimeout: 30000,     // 30 seconds
+      greetingTimeout: 30000,   // 30 seconds
+      logger: true,
+      debug: true
     });
 
+    // Verify connection configuration
+    console.log('🔍 Verifying SMTP connection...');
+    await transporter.verify();
+    console.log('✅ SMTP connection verified');
+
     const mailOptions = {
-      from: process.env.GMAIL_USER, // Your Gmail address
+      from: process.env.GMAIL_USER,
       to: to,
       subject: subject.substring(0, 78),
       html: html,
@@ -143,16 +155,21 @@ async function sendNodemailerEmail(to, subject, html, text = null) {
 
     // Add text version if provided
     if (text) {
-      mailOptions.text = text.substring(0, 100000);
+      mailOptions.text = text;
     }
 
+    console.log('📤 Sending email...');
     const result = await transporter.sendMail(mailOptions);
-
+    
     console.log('✅ Email sent successfully via Nodemailer, Message ID:', result.messageId);
+    console.log('✅ Response:', result.response);
+    
     return { success: true, data: result };
     
   } catch (error) {
-    console.log('⚠️ Nodemailer request failed:', error.message);
+    console.log('❌ Nodemailer error:', error.message);
+    console.log('🔍 Full error:', error);
+    
     return { 
       success: false, 
       error: 'Email service temporarily unavailable: ' + error.message
