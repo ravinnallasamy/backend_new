@@ -49,11 +49,23 @@ const requestSchema = new mongoose.Schema({
   // Rental Period
   startDate: {
     type: Date,
-    required: [true, 'Start date is required']
+    required: [true, 'Start date is required'],
+    validate: {
+      validator: function(value) {
+        return value > new Date();
+      },
+      message: 'Start date must be in the future'
+    }
   },
   endDate: {
     type: Date,
-    required: [true, 'End date is required']
+    required: [true, 'End date is required'],
+    validate: {
+      validator: function(value) {
+        return value > this.startDate;
+      },
+      message: 'End date must be after start date'
+    }
   },
   totalDays: {
     type: Number,
@@ -137,6 +149,9 @@ const requestSchema = new mongoose.Schema({
   cancelledDate: {
     type: Date
   },
+  inProgressDate: {
+    type: Date
+  },
   
   // Delivery Information
   deliveryAddress: {
@@ -216,6 +231,9 @@ const requestSchema = new mongoose.Schema({
   providerFeedback: {
     type: String,
     maxlength: [1000, 'Feedback cannot exceed 1000 characters']
+  },
+  feedbackDate: {
+    type: Date
   }
 }, {
   timestamps: true,
@@ -231,6 +249,8 @@ requestSchema.index({ status: 1 });
 requestSchema.index({ requestDate: -1 });
 requestSchema.index({ startDate: 1, endDate: 1 });
 requestSchema.index({ isActive: 1 });
+requestSchema.index({ customerEmail: 1 });
+requestSchema.index({ providerEmail: 1 });
 
 // Virtual for request duration in days
 requestSchema.virtual('durationInDays').get(function() {
@@ -256,13 +276,81 @@ requestSchema.virtual('summary').get(function() {
   };
 });
 
+// Virtual for checking if request is overdue
+requestSchema.virtual('isOverdue').get(function() {
+  if (this.status === 'in-progress' && this.endDate && new Date() > this.endDate) {
+    return true;
+  }
+  return false;
+});
+
+// Virtual for days until start
+requestSchema.virtual('daysUntilStart').get(function() {
+  if (this.startDate) {
+    const today = new Date();
+    const diffTime = this.startDate - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+  return null;
+});
+
 // Pre-save middleware to calculate remaining payment
 requestSchema.pre('save', function(next) {
   if (this.totalAmount && this.advancePayment) {
     this.remainingPayment = this.totalAmount - this.advancePayment;
   }
+  
+  // Auto-calculate total days if not provided
+  if (this.startDate && this.endDate && !this.totalDays) {
+    const diffTime = Math.abs(this.endDate - this.startDate);
+    this.totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+  
   next();
 });
+
+// Static method to find active requests by customer
+requestSchema.statics.findByCustomer = function(customerId) {
+  return this.find({ customerId, isActive: true }).sort({ requestDate: -1 });
+};
+
+// Static method to find active requests by provider
+requestSchema.statics.findByProvider = function(providerId) {
+  return this.find({ providerId, isActive: true }).sort({ requestDate: -1 });
+};
+
+// Static method to find requests by status
+requestSchema.statics.findByStatus = function(status) {
+  return this.find({ status, isActive: true }).sort({ requestDate: -1 });
+};
+
+// Instance method to mark as completed
+requestSchema.methods.markAsCompleted = function() {
+  this.status = 'completed';
+  this.completedDate = new Date();
+  return this.save();
+};
+
+// Instance method to cancel request
+requestSchema.methods.cancelRequest = function(reason = 'Cancelled by user') {
+  this.status = 'cancelled';
+  this.cancelledDate = new Date();
+  this.rejectionReason = reason;
+  return this.save();
+};
+
+// Instance method to add feedback
+requestSchema.methods.addFeedback = function(rating, feedback, fromCustomer = true) {
+  if (fromCustomer) {
+    this.customerRating = rating;
+    this.customerFeedback = feedback;
+  } else {
+    this.providerRating = rating;
+    this.providerFeedback = feedback;
+  }
+  this.feedbackDate = new Date();
+  return this.save();
+};
 
 // This model stores rental requests
 module.exports = mongoose.model('Request', requestSchema, 'requests');

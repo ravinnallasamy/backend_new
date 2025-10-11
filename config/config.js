@@ -13,29 +13,14 @@ const config = {
   // JWT Configuration
   jwt: {
     secret: process.env.JWT_SECRET || 'your-super-secure-jwt-secret-change-in-production',
-    activationSecret: process.env.JWT_ACTIVATION_SECRET || 'your-activation-secret-key-change-this-too',
-    resetSecret: process.env.JWT_RESET_SECRET || 'your-reset-secret-key-and-this-one-too',
-    expiresIn: process.env.JWT_EXPIRE || '7d',
-    resetExpiresIn: process.env.JWT_RESET_EXPIRE || '1h',
-    activationExpiresIn: '24h'
+    expiresIn: process.env.JWT_EXPIRE || '7d'
   },
   
-  // Email Configuration - UPDATED FOR NODEMAILER
-  email: {
-    service: 'gmail',
-    user: process.env.GMAIL_USER || 'your.email@gmail.com',
-    appPassword: process.env.GMAIL_APP_PASSWORD,
-    from: process.env.GMAIL_USER || 'Uzhavan Rentals <your.email@gmail.com>'
+  // Google OAuth Configuration - NEW
+  googleOAuth: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET
   },
-  
-  // Nodemailer Configuration - CORRECTED
-nodemailer: {
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD
-  }
-},
   
   // URL Configuration
   urls: {
@@ -43,8 +28,6 @@ nodemailer: {
     userFrontend: process.env.USER_FRONTEND_URL || 'http://localhost:3000',
     providerFrontend: process.env.PROVIDER_FRONTEND_URL || 'http://localhost:3001',
     backend: process.env.BACKEND_URL || 'http://localhost:5000',
-    activationPath: '/activate',
-    resetPath: '/reset-password',
     frontendUrls: process.env.FRONTEND_URLS ?
       process.env.FRONTEND_URLS.split(',').map(url => url.trim()) :
       [
@@ -66,9 +49,6 @@ nodemailer: {
 
   // Security Configuration
   security: {
-    password: {
-      minLength: 6
-    },
     rateLimiting: {
       enabled: true
     },
@@ -78,25 +58,17 @@ nodemailer: {
     }
   },
   
-  // Validation - UPDATED FOR NODEMAILER
+  // Validation - UPDATED FOR GOOGLE OAUTH
   validate() {
     const required = [
-      'GMAIL_USER',
-      'GMAIL_APP_PASSWORD',
-      'JWT_SECRET',
-      'JWT_ACTIVATION_SECRET', 
-      'JWT_RESET_SECRET'
+      'GOOGLE_CLIENT_ID',
+      'JWT_SECRET'
     ];
     
     const missing = required.filter(key => !process.env[key]);
     
     if (missing.length > 0) {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-    }
-    
-    // Validate Gmail configuration
-    if (!this.email.user || !this.email.appPassword) {
-      throw new Error('Gmail configuration is required. Check GMAIL_USER and GMAIL_APP_PASSWORD in environment variables.');
     }
 
     // Validate JWT secrets in production
@@ -105,12 +77,6 @@ nodemailer: {
       if (this.jwt.secret.includes('abcd') || this.jwt.secret.length < 32) {
         weakSecrets.push('JWT_SECRET');
       }
-      if (this.jwt.activationSecret.includes('abcdefgh') || this.jwt.activationSecret.length < 32) {
-        weakSecrets.push('JWT_ACTIVATION_SECRET');
-      }
-      if (this.jwt.resetSecret.includes('rstsecret') || this.jwt.resetSecret.length < 32) {
-        weakSecrets.push('JWT_RESET_SECRET');
-      }
       
       if (weakSecrets.length > 0) {
         throw new Error(`Weak JWT secrets detected in production: ${weakSecrets.join(', ')}. Use strong, random secrets.`);
@@ -118,22 +84,19 @@ nodemailer: {
     }
     
     console.log('✅ Configuration validated successfully');
-    console.log('✅ Email service (Nodemailer/Gmail) ready for activation and password reset emails');
+    console.log('✅ Google OAuth ready for authentication');
     return true;
   },
   
-  // Display current configuration - UPDATED FOR NODEMAILER
+  // Display current configuration - UPDATED FOR GOOGLE OAUTH
   display() {
     console.log('\n📋 ===== APPLICATION CONFIGURATION =====');
     console.log(`   🌐 Environment: ${this.nodeEnv}`);
     console.log(`   🚀 Port: ${this.port}`);
     console.log(`   📊 Database: ${this.mongodb.uri.replace(/\/\/.*@/, '//***:***@')}`);
-    console.log(`   📧 Email Service: Nodemailer (Gmail)`);
-    console.log(`   📧 Email From: ${this.email.from}`);
-    console.log(`   📧 Gmail User: ${this.email.user}`);
-    console.log(`   🔑 Gmail App Password: ${this.email.appPassword ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   🔐 Authentication: Google OAuth`);
+    console.log(`   🔑 Google Client ID: ${this.googleOAuth.clientId ? '✅ Configured' : '❌ Missing'}`);
     console.log(`   🔑 JWT Expires: ${this.jwt.expiresIn}`);
-    console.log(`   🔑 JWT Reset Expires: ${this.jwt.resetExpiresIn}`);
     console.log(`   🔗 Primary Frontend URL: ${this.urls.frontend}`);
     console.log(`   🔗 Backend URL: ${this.urls.backend}`);
     
@@ -141,13 +104,12 @@ nodemailer: {
     console.log('\n🔒 ===== SECURITY STATUS =====');
     const jwtSecretsSecure = !(
       this.jwt.secret === 'abcd' || 
-      this.jwt.activationSecret === 'abcdefgh' || 
-      this.jwt.resetSecret === 'rstsecret'
+      this.jwt.secret.length < 32
     );
     console.log(`   JWT Secrets: ${jwtSecretsSecure ? '✅ Secure' : '⚠️  Using defaults'}`);
     
-    const emailConfigured = this.isEmailConfigured();
-    console.log(`   Email Service: ${emailConfigured ? '✅ Ready' : '❌ Not configured'}`);
+    const oauthConfigured = this.isOAuthConfigured();
+    console.log(`   Google OAuth: ${oauthConfigured ? '✅ Ready' : '❌ Not configured'}`);
     
     const usingProductionDB = !this.mongodb.uri.includes('localhost');
     console.log(`   Database: ${usingProductionDB ? '✅ Production' : '⚠️  Development'}`);
@@ -158,8 +120,8 @@ nodemailer: {
       console.log('   ❌ CRITICAL: Change default JWT secrets in production!');
     }
     
-    if (this.email.user.includes('your.email@gmail.com')) {
-      console.log('   💡 Tip: Update GMAIL_USER to use your actual Gmail address');
+    if (!oauthConfigured) {
+      console.log('   ❌ CRITICAL: Google OAuth Client ID is required!');
     }
     
     if (!usingProductionDB && this.nodeEnv === 'production') {
@@ -173,44 +135,18 @@ nodemailer: {
     console.log('==========================================\n');
   },
   
-  // Helper method to check if email is configured properly - UPDATED
-  isEmailConfigured() {
-    return !!(this.email.user && this.email.appPassword);
+  // Helper method to check if Google OAuth is configured properly
+  isOAuthConfigured() {
+    return !!(this.googleOAuth.clientId);
   },
   
-  // Get email configuration safely - UPDATED
-  getEmailConfig() {
+  // Get Google OAuth configuration
+  getOAuthConfig() {
     return {
-      service: this.email.service,
-      user: this.email.user,
-      from: this.email.from,
-      isConfigured: this.isEmailConfigured()
+      clientId: this.googleOAuth.clientId,
+      clientSecret: this.googleOAuth.clientSecret,
+      isConfigured: this.isOAuthConfigured()
     };
-  },
-
-  // Get Nodemailer configuration - NEW
-  getNodemailerConfig() {
-    return {
-      service: this.nodemailer.service,
-      auth: {
-        user: this.nodemailer.auth.user,
-        pass: this.nodemailer.auth.pass
-      }
-    };
-  },
-
-  // Get activation URL
-  getActivationUrl(token) {
-    const baseUrl = this.urls.frontend.replace(/\/+$/, '');
-    const path = this.urls.activationPath.replace(/^\/+/, '');
-    return `${baseUrl}/${path}/${token}`;
-  },
-
-  // Get reset password URL
-  getResetPasswordUrl(token) {
-    const baseUrl = this.urls.frontend.replace(/\/+$/, '');
-    const path = this.urls.resetPath.replace(/^\/+/, '');
-    return `${baseUrl}/${path}/${token}`;
   },
 
   // Check if running in development mode

@@ -18,10 +18,11 @@ router.get('/', async (req, res) => {
     const requests = await Request.find(filter)
       .sort({ requestDate: -1 });
 
-    // Don't populate by default to avoid ObjectId issues in frontend
-    // Frontend will handle ObjectId comparison properly
-    
-    res.json(requests);
+    res.json({
+      success: true,
+      data: requests,
+      count: requests.length
+    });
   } catch (error) {
     console.error('Error fetching requests:', error);
     res.status(500).json({ 
@@ -36,9 +37,9 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const request = await Request.findById(req.params.id)
-      .populate('customerId', 'name email phone address')
-      .populate('providerId', 'name businessName email phone address')
-      .populate('equipmentId', 'name category type price specifications');
+      .populate('customerId', 'name email phone address avatar')
+      .populate('providerId', 'name businessName email phone address avatar businessType')
+      .populate('equipmentId', 'name category type price specifications images');
     
     if (!request) {
       return res.status(404).json({ 
@@ -47,7 +48,10 @@ router.get('/:id', async (req, res) => {
       });
     }
     
-    res.json(request);
+    res.json({
+      success: true,
+      data: request
+    });
   } catch (error) {
     console.error('Error fetching request:', error);
     res.status(500).json({ 
@@ -96,6 +100,12 @@ router.post('/', async (req, res) => {
       calculatedTotalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
     }
     
+    // Calculate total amount if not provided
+    let calculatedTotalAmount = totalAmount;
+    if (!calculatedTotalAmount && pricePerDay && calculatedTotalDays) {
+      calculatedTotalAmount = pricePerDay * calculatedTotalDays;
+    }
+    
     // Create new request
     const newRequest = new Request({
       customerId,
@@ -113,7 +123,7 @@ router.post('/', async (req, res) => {
       totalHours,
       pricePerDay: pricePerDay ? parseFloat(pricePerDay) : 0,
       pricePerHour: pricePerHour ? parseFloat(pricePerHour) : 0,
-      totalAmount: totalAmount ? parseFloat(totalAmount) : 0,
+      totalAmount: calculatedTotalAmount ? parseFloat(calculatedTotalAmount) : 0,
       message,
       urgency: urgency || 'Medium',
       deliveryAddress,
@@ -226,6 +236,8 @@ router.patch('/:id/status', async (req, res) => {
       updateData.completedDate = new Date();
     } else if (status === 'cancelled') {
       updateData.cancelledDate = new Date();
+    } else if (status === 'in-progress') {
+      updateData.inProgressDate = new Date();
     }
     
     const updatedRequest = await Request.findByIdAndUpdate(
@@ -262,10 +274,15 @@ router.patch('/:id/feedback', async (req, res) => {
     const { customerRating, customerFeedback, providerRating, providerFeedback } = req.body;
     
     const updateData = {};
-    if (customerRating) updateData.customerRating = customerRating;
+    if (customerRating !== undefined) updateData.customerRating = customerRating;
     if (customerFeedback) updateData.customerFeedback = customerFeedback;
-    if (providerRating) updateData.providerRating = providerRating;
+    if (providerRating !== undefined) updateData.providerRating = providerRating;
     if (providerFeedback) updateData.providerFeedback = providerFeedback;
+    
+    // Set feedback date
+    if (customerRating || customerFeedback || providerRating || providerFeedback) {
+      updateData.feedbackDate = new Date();
+    }
     
     const updatedRequest = await Request.findByIdAndUpdate(
       req.params.id,
@@ -321,6 +338,43 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Error deleting request', 
+      error: error.message 
+    });
+  }
+});
+
+// GET requests statistics
+router.get('/stats/overview', async (req, res) => {
+  try {
+    const { customerId, providerId } = req.query;
+    
+    let filter = { isActive: true };
+    if (customerId) filter.customerId = customerId;
+    if (providerId) filter.providerId = providerId;
+    
+    const totalRequests = await Request.countDocuments(filter);
+    const pendingRequests = await Request.countDocuments({ ...filter, status: 'pending' });
+    const approvedRequests = await Request.countDocuments({ ...filter, status: 'approved' });
+    const inProgressRequests = await Request.countDocuments({ ...filter, status: 'in-progress' });
+    const completedRequests = await Request.countDocuments({ ...filter, status: 'completed' });
+    const cancelledRequests = await Request.countDocuments({ ...filter, status: 'cancelled' });
+    
+    res.json({
+      success: true,
+      data: {
+        totalRequests,
+        pendingRequests,
+        approvedRequests,
+        inProgressRequests,
+        completedRequests,
+        cancelledRequests
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching request statistics:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching request statistics', 
       error: error.message 
     });
   }

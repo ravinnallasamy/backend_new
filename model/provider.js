@@ -14,10 +14,21 @@ const providerSchema = new mongoose.Schema({
     lowercase: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
   },
-  password: {
+  // Google OAuth fields
+  googleId: {
     type: String,
-    required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters']
+    required: [true, 'Google ID is required'],
+    unique: true,
+    sparse: true
+  },
+  avatar: {
+    type: String,
+    default: null
+  },
+  authMethod: {
+    type: String,
+    enum: ['google'],
+    default: 'google'
   },
   phone: {
     type: String,
@@ -40,7 +51,11 @@ const providerSchema = new mongoose.Schema({
   businessName: {
     type: String,
     trim: true,
-    maxlength: [200, 'Business name cannot exceed 200 characters']
+    maxlength: [200, 'Business name cannot exceed 200 characters'],
+    default: function() {
+      // Default to provider's name + business if not provided
+      return `${this.name}'s Equipment Rental`;
+    }
   },
   businessType: {
     type: String,
@@ -91,19 +106,11 @@ const providerSchema = new mongoose.Schema({
   },
   isActivated: {
     type: Boolean,
-    default: false
+    default: true // Always true for Google OAuth
   },
-  token: {
-    type: String,
-    default: null
-  },
-  passwordResetToken: {
-    type: String,
-    default: null
-  },
-  passwordResetExpires: {
+  activatedAt: {
     type: Date,
-    default: null
+    default: Date.now
   },
 
   // Statistics
@@ -133,9 +140,62 @@ const providerSchema = new mongoose.Schema({
 
 // Indexes for faster queries
 providerSchema.index({ email: 1 });
+providerSchema.index({ googleId: 1 });
 providerSchema.index({ businessName: 1 });
 providerSchema.index({ businessType: 1 });
 providerSchema.index({ isActive: 1, isActivated: 1 });
+providerSchema.index({ authMethod: 1 });
 
-// This model stores provider accounts
+// Virtual for checking if business profile is complete
+providerSchema.virtual('isProfileComplete').get(function() {
+  return !!(this.name && this.email && this.phone && this.address && this.businessName);
+});
+
+// Virtual for average rating calculation
+providerSchema.virtual('averageRating').get(function() {
+  return this.reviewCount > 0 ? (this.rating / this.reviewCount).toFixed(1) : 0;
+});
+
+// Method to get public profile (excludes sensitive fields)
+providerSchema.methods.toPublicJSON = function() {
+  const providerObject = this.toObject();
+  
+  // Remove any sensitive fields
+  delete providerObject.googleId;
+  delete providerObject.authMethod;
+  delete providerObject.__v;
+  
+  // Add computed fields
+  providerObject.averageRating = this.averageRating;
+  providerObject.isProfileComplete = this.isProfileComplete;
+  
+  return providerObject;
+};
+
+// Static method to find by Google ID or email
+providerSchema.statics.findByGoogleIdOrEmail = function(googleId, email) {
+  return this.findOne({
+    $or: [
+      { googleId: googleId },
+      { email: email.toLowerCase() }
+    ]
+  });
+};
+
+// Method to update provider statistics
+providerSchema.methods.updateStatistics = function() {
+  // This can be called when equipment is added/removed or rentals are completed
+  // For now, it's a placeholder for future statistics logic
+  return this.save();
+};
+
+// Pre-save middleware to ensure business name has a default value
+providerSchema.pre('save', function(next) {
+  if (!this.businessName || this.businessName.trim() === '') {
+    this.businessName = `${this.name}'s Equipment Rental`;
+  }
+  next();
+});
+
+// This model stores provider accounts with Google OAuth
 module.exports = mongoose.model('Provider', providerSchema, 'providers');

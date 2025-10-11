@@ -5,7 +5,7 @@ const Equipment = require('../model/equipment');
 // GET all equipment
 router.get('/', async (req, res) => {
   try {
-    const { category, type, available, providerId, minPrice, maxPrice } = req.query;
+    const { category, type, available, providerId, minPrice, maxPrice, limit, page } = req.query;
     
     // Build filter object
     let filter = { isActive: true };
@@ -20,11 +20,29 @@ router.get('/', async (req, res) => {
       if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
     }
     
-    const equipment = await Equipment.find(filter)
-      .populate('providerId', 'name businessName rating')
-      .sort({ createdAt: -1 });
+    // Pagination
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 12;
+    const skip = (pageNum - 1) * limitNum;
     
-    res.json(equipment);
+    const equipment = await Equipment.find(filter)
+      .populate('providerId', 'name businessName rating avatar')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
+    
+    const totalCount = await Equipment.countDocuments(filter);
+    
+    res.json({
+      success: true,
+      data: equipment,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalCount,
+        pages: Math.ceil(totalCount / limitNum)
+      }
+    });
   } catch (error) {
     console.error('Error fetching equipment:', error);
     res.status(500).json({ 
@@ -39,7 +57,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const equipment = await Equipment.findById(req.params.id)
-      .populate('providerId', 'name businessName phone email rating reviewCount');
+      .populate('providerId', 'name businessName phone email rating reviewCount avatar businessType');
     
     if (!equipment) {
       return res.status(404).json({ 
@@ -48,7 +66,10 @@ router.get('/:id', async (req, res) => {
       });
     }
     
-    res.json(equipment);
+    res.json({
+      success: true,
+      data: equipment
+    });
   } catch (error) {
     console.error('Error fetching equipment:', error);
     res.status(500).json({ 
@@ -65,14 +86,19 @@ router.post('/', async (req, res) => {
     const { 
       name, category, type, description, price, address,
       providerId, providerEmail, providerName,
-      specifications, images, available 
+      specifications, images, available, condition
     } = req.body;
     
     // Validate required fields
-    if (!name || !category || !type || !price || !address || !providerId) {
+    const requiredFields = { name, category, type, price, address, providerId };
+    const missingFields = Object.entries(requiredFields)
+      .filter(([key, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Missing required fields' 
+        message: `Missing required fields: ${missingFields.join(', ')}` 
       });
     }
     
@@ -89,7 +115,8 @@ router.post('/', async (req, res) => {
       providerName,
       specifications: specifications || {},
       images: images || [],
-      available: available !== undefined ? available : true
+      available: available !== undefined ? available : true,
+      condition: condition || 'Excellent'
     });
     
     const savedEquipment = await newEquipment.save();
@@ -124,13 +151,21 @@ router.put('/:id', async (req, res) => {
       specifications, images, available, condition 
     } = req.body;
     
+    const updateData = {
+      name, category, type, description, address,
+      specifications, images, available, condition
+    };
+    
+    if (price) updateData.price = parseFloat(price);
+    
+    // Remove undefined values
+    Object.keys(updateData).forEach(key => 
+      updateData[key] === undefined && delete updateData[key]
+    );
+    
     const updatedEquipment = await Equipment.findByIdAndUpdate(
       req.params.id,
-      { 
-        name, category, type, description, 
-        price: price ? parseFloat(price) : undefined,
-        address, specifications, images, available, condition
-      },
+      updateData,
       { new: true, runValidators: true }
     );
     
@@ -165,6 +200,14 @@ router.patch('/:id', async (req, res) => {
     if (updates.price) {
       updates.price = parseFloat(updates.price);
     }
+    
+    // Remove fields that shouldn't be updated
+    const restrictedFields = ['providerId', 'providerEmail', 'providerName'];
+    restrictedFields.forEach(field => {
+      if (updates[field]) {
+        delete updates[field];
+      }
+    });
     
     const updatedEquipment = await Equipment.findByIdAndUpdate(
       req.params.id,
@@ -235,15 +278,36 @@ router.delete('/:id', async (req, res) => {
 // GET equipment by category
 router.get('/category/:category', async (req, res) => {
   try {
+    const { limit, page } = req.query;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 12;
+    const skip = (pageNum - 1) * limitNum;
+    
     const equipment = await Equipment.find({ 
       category: req.params.category,
       isActive: true,
       available: true 
-    }).populate('providerId', 'name businessName rating');
+    })
+    .populate('providerId', 'name businessName rating avatar')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limitNum);
+    
+    const totalCount = await Equipment.countDocuments({ 
+      category: req.params.category,
+      isActive: true,
+      available: true 
+    });
     
     res.json({
       success: true,
-      data: equipment
+      data: equipment,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalCount,
+        pages: Math.ceil(totalCount / limitNum)
+      }
     });
   } catch (error) {
     console.error('Error fetching equipment by category:', error);
@@ -259,6 +323,11 @@ router.get('/category/:category', async (req, res) => {
 router.get('/search/:query', async (req, res) => {
   try {
     const query = req.params.query;
+    const { limit, page } = req.query;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 12;
+    const skip = (pageNum - 1) * limitNum;
+    
     const equipment = await Equipment.find({
       $and: [
         { isActive: true },
@@ -271,17 +340,93 @@ router.get('/search/:query', async (req, res) => {
           ]
         }
       ]
-    }).populate('providerId', 'name businessName rating');
+    })
+    .populate('providerId', 'name businessName rating avatar')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limitNum);
+    
+    const totalCount = await Equipment.countDocuments({
+      $and: [
+        { isActive: true },
+        {
+          $or: [
+            { name: { $regex: query, $options: 'i' } },
+            { description: { $regex: query, $options: 'i' } },
+            { category: { $regex: query, $options: 'i' } },
+            { type: { $regex: query, $options: 'i' } }
+          ]
+        }
+      ]
+    });
     
     res.json({
       success: true,
-      data: equipment
+      data: equipment,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalCount,
+        pages: Math.ceil(totalCount / limitNum)
+      }
     });
   } catch (error) {
     console.error('Error searching equipment:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Error searching equipment', 
+      error: error.message 
+    });
+  }
+});
+
+// GET equipment statistics
+router.get('/stats/overview', async (req, res) => {
+  try {
+    const { providerId } = req.query;
+    
+    let filter = { isActive: true };
+    if (providerId) filter.providerId = providerId;
+    
+    const totalEquipment = await Equipment.countDocuments(filter);
+    const availableEquipment = await Equipment.countDocuments({ ...filter, available: true });
+    const unavailableEquipment = await Equipment.countDocuments({ ...filter, available: false });
+    
+    // Get equipment count by category
+    const categoryStats = await Equipment.aggregate([
+      { $match: filter },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+    
+    // Get price statistics
+    const priceStats = await Equipment.aggregate([
+      { $match: filter },
+      { 
+        $group: {
+          _id: null,
+          avgPrice: { $avg: '$price' },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' }
+        }
+      }
+    ]);
+    
+    res.json({
+      success: true,
+      data: {
+        totalEquipment,
+        availableEquipment,
+        unavailableEquipment,
+        categoryStats,
+        priceStats: priceStats[0] || { avgPrice: 0, minPrice: 0, maxPrice: 0 }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching equipment statistics:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching equipment statistics', 
       error: error.message 
     });
   }

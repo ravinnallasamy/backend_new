@@ -5,8 +5,12 @@ const Provider = require('../model/provider');
 // GET all providers
 router.get('/', async (req, res) => {
   try {
-    const providers = await Provider.find({ isActive: true }).select('-password');
-    res.json(providers);
+    const providers = await Provider.find({ isActive: true }).select('-googleId');
+    res.json({
+      success: true,
+      data: providers,
+      count: providers.length
+    });
   } catch (error) {
     console.error('Error fetching providers:', error);
     res.status(500).json({ 
@@ -20,14 +24,17 @@ router.get('/', async (req, res) => {
 // GET provider by ID
 router.get('/:id', async (req, res) => {
   try {
-    const provider = await Provider.findById(req.params.id).select('-password');
+    const provider = await Provider.findById(req.params.id).select('-googleId');
     if (!provider) {
       return res.status(404).json({ 
         success: false, 
         message: 'Provider not found' 
       });
     }
-    res.json(provider);
+    res.json({
+      success: true,
+      data: provider
+    });
   } catch (error) {
     console.error('Error fetching provider:', error);
     res.status(500).json({ 
@@ -38,50 +45,57 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create new provider
+// POST create new provider (for admin/manual creation if needed)
 router.post('/', async (req, res) => {
   try {
     const { 
-      name, email, password, phone, address, 
+      name, email, phone, address, 
       businessName, businessType, licenseNumber,
-      serviceArea, experience, certifications 
+      serviceArea, experience, certifications,
+      googleId, avatar // For manual provider creation if needed
     } = req.body;
     
     // Check if provider already exists
-    const existingProvider = await Provider.findOne({ email });
+    const existingProvider = await Provider.findOne({ 
+      $or: [
+        { email: email.toLowerCase() },
+        { googleId: googleId }
+      ]
+    });
+    
     if (existingProvider) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Provider with this email already exists' 
+        message: 'Provider with this email or Google ID already exists' 
       });
     }
     
     // Create new provider
     const newProvider = new Provider({
       name,
-      email,
-      password, // In production, hash this password
+      email: email.toLowerCase(),
       phone,
       address,
-      businessName,
-      businessType,
+      googleId: googleId || `manual_${Date.now()}`, // Fallback for manual creation
+      avatar: avatar || null,
+      authMethod: 'google',
+      businessName: businessName || `${name}'s Equipment Rental`,
+      businessType: businessType || 'Equipment Rental',
       licenseNumber,
       serviceArea,
       experience,
       certifications,
-      userType: 'provider'
+      userType: 'provider',
+      isActivated: true, // Always true for providers
+      activatedAt: new Date()
     });
     
     const savedProvider = await newProvider.save();
     
-    // Return provider without password
-    const providerResponse = savedProvider.toObject();
-    delete providerResponse.password;
-    
     res.status(201).json({
       success: true,
       message: 'Provider created successfully',
-      data: providerResponse
+      data: savedProvider.toPublicJSON() // Use the safe public method
     });
   } catch (error) {
     console.error('Error creating provider:', error);
@@ -97,20 +111,32 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { 
-      name, phone, address, email,
+      name, phone, address,
       businessName, businessType, licenseNumber,
-      serviceArea, experience, certifications 
+      serviceArea, experience, certifications,
+      avatar
     } = req.body;
+    
+    // Remove fields that shouldn't be updated
+    const updates = { 
+      name, phone, address,
+      businessName, businessType, licenseNumber,
+      serviceArea, experience, certifications,
+      avatar
+    };
+    
+    // Remove undefined fields
+    Object.keys(updates).forEach(key => {
+      if (updates[key] === undefined) {
+        delete updates[key];
+      }
+    });
     
     const updatedProvider = await Provider.findByIdAndUpdate(
       req.params.id,
-      { 
-        name, phone, address, email,
-        businessName, businessType, licenseNumber,
-        serviceArea, experience, certifications 
-      },
+      updates,
       { new: true, runValidators: true }
-    ).select('-password');
+    ).select('-googleId');
     
     if (!updatedProvider) {
       return res.status(404).json({ 
@@ -122,7 +148,7 @@ router.put('/:id', async (req, res) => {
     res.json({
       success: true,
       message: 'Provider updated successfully',
-      data: updatedProvider
+      data: updatedProvider.toPublicJSON()
     });
   } catch (error) {
     console.error('Error updating provider:', error);
@@ -139,16 +165,19 @@ router.patch('/:id', async (req, res) => {
   try {
     const updates = req.body;
     
-    // Remove password from updates if present (handle separately)
-    if (updates.password) {
-      delete updates.password;
-    }
+    // Remove fields that shouldn't be updated via PATCH
+    const restrictedFields = ['email', 'googleId', 'authMethod', 'userType', 'isActivated', 'activatedAt'];
+    restrictedFields.forEach(field => {
+      if (updates[field]) {
+        delete updates[field];
+      }
+    });
     
     const updatedProvider = await Provider.findByIdAndUpdate(
       req.params.id,
       updates,
       { new: true, runValidators: true }
-    ).select('-password');
+    ).select('-googleId');
     
     if (!updatedProvider) {
       return res.status(404).json({ 
@@ -160,7 +189,7 @@ router.patch('/:id', async (req, res) => {
     res.json({
       success: true,
       message: 'Provider updated successfully',
-      data: updatedProvider
+      data: updatedProvider.toPublicJSON()
     });
   } catch (error) {
     console.error('Error updating provider:', error);
@@ -179,7 +208,7 @@ router.delete('/:id', async (req, res) => {
       req.params.id,
       { isActive: false },
       { new: true }
-    ).select('-password');
+    ).select('-googleId');
     
     if (!provider) {
       return res.status(404).json({ 
@@ -191,7 +220,7 @@ router.delete('/:id', async (req, res) => {
     res.json({
       success: true,
       message: 'Provider deleted successfully',
-      data: provider
+      data: provider.toPublicJSON()
     });
   } catch (error) {
     console.error('Error deleting provider:', error);
@@ -258,6 +287,62 @@ router.get('/:id/requests', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Error fetching provider requests', 
+      error: error.message 
+    });
+  }
+});
+
+// GET provider statistics
+router.get('/:id/stats', async (req, res) => {
+  try {
+    const provider = await Provider.findById(req.params.id).select('-googleId');
+    if (!provider) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Provider not found' 
+      });
+    }
+
+    const Equipment = require('../model/equipment');
+    const Request = require('../model/request');
+
+    const equipmentCount = await Equipment.countDocuments({ 
+      providerId: req.params.id, 
+      isActive: true 
+    });
+
+    const activeRequests = await Request.countDocuments({ 
+      providerId: req.params.id, 
+      status: { $in: ['pending', 'accepted'] },
+      isActive: true 
+    });
+
+    const completedRentals = await Request.countDocuments({ 
+      providerId: req.params.id, 
+      status: 'completed',
+      isActive: true 
+    });
+
+    res.json({
+      success: true,
+      data: {
+        provider: provider.toPublicJSON(),
+        statistics: {
+          totalEquipment: equipmentCount,
+          activeRequests: activeRequests,
+          completedRentals: completedRentals,
+          totalRentals: provider.totalRentals,
+          averageRating: provider.averageRating,
+          reviewCount: provider.reviewCount,
+          isProfileComplete: provider.isProfileComplete
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching provider stats:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching provider statistics', 
       error: error.message 
     });
   }

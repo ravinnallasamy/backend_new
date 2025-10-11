@@ -5,8 +5,12 @@ const User = require('../model/user');
 // GET all users
 router.get('/', async (req, res) => {
   try {
-    const users = await User.find({ isActive: true }).select('-password');
-    res.json(users);
+    const users = await User.find({ isActive: true }).select('-googleId');
+    res.json({
+      success: true,
+      data: users,
+      count: users.length
+    });
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({
@@ -30,14 +34,18 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).select('-password');
+    const user = await User.findById(userId).select('-googleId');
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    res.json(user);
+    
+    res.json({
+      success: true,
+      data: user.toPublicJSON() // Use safe public method
+    });
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({
@@ -48,40 +56,46 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create new user
+// POST create new user (for admin/manual creation if needed)
 router.post('/', async (req, res) => {
   try {
-    const { name, email, password, phone, address, userType } = req.body;
+    const { name, email, phone, address, userType, googleId, avatar } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ 
+      $or: [
+        { email: email.toLowerCase() },
+        { googleId: googleId }
+      ]
+    });
+    
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'User with this email already exists'
+        message: 'User with this email or Google ID already exists'
       });
     }
 
     // Create new user
     const newUser = new User({
       name,
-      email,
-      password, // In production, hash this password
+      email: email.toLowerCase(),
       phone,
       address,
-      userType: userType || 'user'
+      googleId: googleId || `manual_${Date.now()}`, // Fallback for manual creation
+      avatar: avatar || null,
+      authMethod: 'google',
+      userType: userType || 'user',
+      isActivated: true, // Always true for Google OAuth
+      activatedAt: new Date()
     });
 
     const savedUser = await newUser.save();
 
-    // Return user without password
-    const userResponse = savedUser.toObject();
-    delete userResponse.password;
-
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      data: userResponse
+      data: savedUser.toPublicJSON() // Use safe public method
     });
   } catch (error) {
     console.error('Error creating user:', error);
@@ -96,13 +110,28 @@ router.post('/', async (req, res) => {
 // PUT update user
 router.put('/:id', async (req, res) => {
   try {
-    const { name, phone, address, email } = req.body;
+    const { name, phone, address, avatar } = req.body;
+
+    // Remove fields that shouldn't be updated
+    const updates = { 
+      name, 
+      phone, 
+      address,
+      avatar 
+    };
+    
+    // Remove undefined fields
+    Object.keys(updates).forEach(key => {
+      if (updates[key] === undefined) {
+        delete updates[key];
+      }
+    });
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      { name, phone, address, email },
+      updates,
       { new: true, runValidators: true }
-    ).select('-password');
+    ).select('-googleId');
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -114,7 +143,7 @@ router.put('/:id', async (req, res) => {
     res.json({
       success: true,
       message: 'User updated successfully',
-      data: updatedUser
+      data: updatedUser.toPublicJSON() // Use safe public method
     });
   } catch (error) {
     console.error('Error updating user:', error);
@@ -131,16 +160,19 @@ router.patch('/:id', async (req, res) => {
   try {
     const updates = req.body;
 
-    // Remove password from updates if present (handle separately)
-    if (updates.password) {
-      delete updates.password;
-    }
+    // Remove fields that shouldn't be updated via PATCH
+    const restrictedFields = ['email', 'googleId', 'authMethod', 'userType', 'isActivated', 'activatedAt'];
+    restrictedFields.forEach(field => {
+      if (updates[field]) {
+        delete updates[field];
+      }
+    });
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
       updates,
       { new: true, runValidators: true }
-    ).select('-password');
+    ).select('-googleId');
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -152,7 +184,7 @@ router.patch('/:id', async (req, res) => {
     res.json({
       success: true,
       message: 'User updated successfully',
-      data: updatedUser
+      data: updatedUser.toPublicJSON() // Use safe public method
     });
   } catch (error) {
     console.error('Error updating user:', error);
@@ -171,7 +203,7 @@ router.delete('/:id', async (req, res) => {
       req.params.id,
       { isActive: false },
       { new: true }
-    ).select('-password');
+    ).select('-googleId');
 
     if (!user) {
       return res.status(404).json({
@@ -183,7 +215,7 @@ router.delete('/:id', async (req, res) => {
     res.json({
       success: true,
       message: 'User deleted successfully',
-      data: user
+      data: user.toPublicJSON() // Use safe public method
     });
   } catch (error) {
     console.error('Error deleting user:', error);
@@ -191,6 +223,98 @@ router.delete('/:id', async (req, res) => {
       success: false,
       message: 'Error deleting user',
       error: error.message
+    });
+  }
+});
+
+// GET user's rental requests
+router.get('/:id/requests', async (req, res) => {
+  try {
+    const Request = require('../model/request');
+    const requests = await Request.find({ 
+      userId: req.params.id, 
+      isActive: true 
+    }).sort({ requestDate: -1 });
+    
+    res.json({
+      success: true,
+      data: requests,
+      count: requests.length
+    });
+  } catch (error) {
+    console.error('Error fetching user requests:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching user requests', 
+      error: error.message 
+    });
+  }
+});
+
+// GET user statistics
+router.get('/:id/stats', async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    if (!userId || userId === 'undefined' || userId === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID provided'
+      });
+    }
+
+    const user = await User.findById(userId).select('-googleId');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const Request = require('../model/request');
+
+    const totalRequests = await Request.countDocuments({ 
+      userId: userId, 
+      isActive: true 
+    });
+
+    const pendingRequests = await Request.countDocuments({ 
+      userId: userId, 
+      status: 'pending',
+      isActive: true 
+    });
+
+    const completedRentals = await Request.countDocuments({ 
+      userId: userId, 
+      status: 'completed',
+      isActive: true 
+    });
+
+    const activeRentals = await Request.countDocuments({ 
+      userId: userId, 
+      status: { $in: ['accepted', 'in-progress'] },
+      isActive: true 
+    });
+
+    res.json({
+      success: true,
+      data: {
+        user: user.toPublicJSON(),
+        statistics: {
+          totalRequests: totalRequests,
+          pendingRequests: pendingRequests,
+          completedRentals: completedRentals,
+          activeRentals: activeRentals,
+          isProfileComplete: user.isProfileComplete
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching user statistics', 
+      error: error.message 
     });
   }
 });

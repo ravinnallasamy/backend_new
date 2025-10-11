@@ -179,8 +179,7 @@ app.get('/health', (req, res) => {
     memory: process.memoryUsage(),
     services: {
       database: 'MongoDB',
-      email: config.isEmailConfigured() ? 'Nodemailer/Gmail (Configured)' : 'Nodemailer/Gmail (Not Configured)', // UPDATED
-      authentication: 'JWT',
+      authentication: 'Google OAuth + JWT', // UPDATED
       rateLimiting: 'Enabled'
     }
   };
@@ -188,6 +187,9 @@ app.get('/health', (req, res) => {
   // Add database connection status if possible
   const mongoose = require('mongoose');
   healthCheck.services.databaseStatus = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
+  
+  // Add Google OAuth status
+  healthCheck.services.googleOAuth = config.isOAuthConfigured() ? '✅ Configured' : '❌ Not Configured';
   
   res.json(healthCheck);
 });
@@ -273,19 +275,19 @@ app.get('/', (req, res) => {
         </div>
         
         <p><strong>Environment:</strong> ${config.nodeEnv}</p>
-        <p><strong>Email Service:</strong> ${config.isEmailConfigured() ? '✅ Nodemailer/Gmail Configured' : '⚠️ Nodemailer/Gmail Not Configured'}</p> <!-- UPDATED -->
+        <p><strong>Authentication:</strong> ${config.isOAuthConfigured() ? '✅ Google OAuth Configured' : '⚠️ Google OAuth Not Configured'}</p> <!-- UPDATED -->
         <p><strong>Database:</strong> ${config.mongodb.uri.includes('localhost') ? '🔧 Development' : '☁️ Production'}</p>
         
-        ${!config.isEmailConfigured() ? `
+        ${!config.isOAuthConfigured() ? `
           <div class="warning">
-            <strong>⚠️ Email service not configured:</strong> Activation emails will not be sent until Gmail is properly configured.
+            <strong>⚠️ Google OAuth not configured:</strong> Authentication will not work until Google OAuth is properly configured.
           </div>
         ` : ''}
         
         <div class="endpoints">
           <h3>📊 Available Endpoints:</h3>
           <div class="endpoint"><a href="/health">/health</a> - API status and service information</div>
-          <div class="endpoint"><a href="/api/auth">/api/auth</a> - Authentication endpoints (Signup, Login, Password Reset)</div>
+          <div class="endpoint"><a href="/api/auth">/api/auth</a> - Authentication endpoints (Google OAuth)</div> <!-- UPDATED -->
           <div class="endpoint"><a href="/api/users">/api/users</a> - User management</div>
           <div class="endpoint"><a href="/api/providers">/api/providers</a> - Provider management</div>
           <div class="endpoint"><a href="/api/equipments">/api/equipments</a> - Equipment management</div>
@@ -295,6 +297,7 @@ app.get('/', (req, res) => {
         <div class="footer">
           <p><strong>Server:</strong> ${config.urls.backend}</p>
           <p><strong>Frontend:</strong> ${config.urls.frontend}</p>
+          <p><strong>Authentication:</strong> Google OAuth (No passwords required)</p> <!-- UPDATED -->
           <p>For API documentation, please refer to the project README.</p>
         </div>
       </div>
@@ -370,11 +373,11 @@ const startServer = async () => {
     await connectDB();
     console.log('✅ MongoDB connected successfully');
 
-    // Check email configuration - UPDATED
-    if (config.isEmailConfigured()) {
-      console.log('✅ Email service (Nodemailer/Gmail) is configured and ready');
+    // Check Google OAuth configuration - UPDATED
+    if (config.isOAuthConfigured()) {
+      console.log('✅ Google OAuth is configured and ready');
     } else {
-      console.log('⚠️  Email service (Nodemailer/Gmail) is not configured. Activation emails will not be sent.');
+      console.log('❌ Google OAuth is not configured. Authentication will not work.');
     }
 
     // Start the server after successful database connection
@@ -387,7 +390,7 @@ const startServer = async () => {
       console.log(`🔗 Network: http://0.0.0.0:${PORT}`);
       console.log(`🔗 Backend URL: ${config.urls.backend}`);
       console.log(`🔗 Frontend URL: ${config.urls.frontend}`);
-      console.log(`📧 Email Service: ${config.isEmailConfigured() ? 'Nodemailer/Gmail ✅' : 'Not Configured ⚠️'}`); // UPDATED
+      console.log(`🔐 Authentication: ${config.isOAuthConfigured() ? 'Google OAuth ✅' : 'Not Configured ❌'}`); // UPDATED
       console.log(`🔒 Security: Helmet ✅ CORS ✅ Rate Limiting ✅ Trust Proxy ✅`);
       console.log(`\n🚀 Application is ready to accept requests!\n`);
     });
