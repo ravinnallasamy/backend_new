@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../model/user');
+const { authenticateToken, requireUser, requireOwnershipOrProvider } = require('../middleware/auth');
 
 // GET all users
 router.get('/', async (req, res) => {
@@ -21,8 +22,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET user by ID
-router.get('/:id', async (req, res) => {
+// GET user by ID (requires authentication)
+router.get('/:id', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const userId = req.params.id;
 
@@ -107,8 +108,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT update user
-router.put('/:id', async (req, res) => {
+// PUT update user (requires authentication)
+router.put('/:id', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const { name, phone, address, avatar } = req.body;
 
@@ -155,8 +156,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// PATCH update user (partial update)
-router.patch('/:id', async (req, res) => {
+// PATCH update user (partial update) (requires authentication)
+router.patch('/:id', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const updates = req.body;
 
@@ -196,8 +197,8 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// DELETE user (soft delete)
-router.delete('/:id', async (req, res) => {
+// DELETE user (soft delete) (requires authentication)
+router.delete('/:id', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -227,8 +228,8 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// GET user's rental requests
-router.get('/:id/requests', async (req, res) => {
+// GET user's rental requests (requires authentication)
+router.get('/:id/requests', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const Request = require('../model/request');
     const requests = await Request.find({ 
@@ -251,8 +252,8 @@ router.get('/:id/requests', async (req, res) => {
   }
 });
 
-// GET user statistics
-router.get('/:id/stats', async (req, res) => {
+// GET user statistics (requires authentication)
+router.get('/:id/stats', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const userId = req.params.id;
 

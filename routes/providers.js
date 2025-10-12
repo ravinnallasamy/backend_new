@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Provider = require('../model/provider');
+const { authenticateToken, requireProvider, requireOwnershipOrProvider } = require('../middleware/auth');
 
 // GET all providers
 router.get('/', async (req, res) => {
@@ -22,7 +23,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET provider by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const provider = await Provider.findById(req.params.id).select('-googleId');
     if (!provider) {
@@ -107,8 +108,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT update provider
-router.put('/:id', async (req, res) => {
+// PUT update provider (requires authentication)
+router.put('/:id', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const { 
       name, phone, address,
@@ -232,8 +233,8 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// GET provider's equipment
-router.get('/:id/equipment', async (req, res) => {
+// GET provider's equipment (requires authentication)
+router.get('/:id/equipment', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const Equipment = require('../model/equipment');
     const mongoose = require('mongoose');

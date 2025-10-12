@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Request = require('../model/request');
+const { authenticateToken, requireUser, requireOwnershipOrProvider } = require('../middleware/auth');
 
 // GET all requests
 router.get('/', async (req, res) => {
@@ -62,8 +63,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create new request
-router.post('/', async (req, res) => {
+// POST create new request (requires user authentication)
+router.post('/', authenticateToken, requireUser, async (req, res) => {
   try {
     console.log('Request creation attempt:', req.body);
 

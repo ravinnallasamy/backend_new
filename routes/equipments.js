@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Equipment = require('../model/equipment');
+const { authenticateToken, requireProvider } = require('../middleware/auth');
 
 // GET all equipment
 router.get('/', async (req, res) => {
@@ -80,8 +81,8 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create new equipment
-router.post('/', async (req, res) => {
+// POST create new equipment (requires provider authentication)
+router.post('/', authenticateToken, requireProvider, async (req, res) => {
   try {
     const { 
       name, category, type, description, price, address,

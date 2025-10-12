@@ -5,24 +5,7 @@ const Provider = require('../model/provider');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 const rateLimit = require('express-rate-limit');
-const { OAuth2Client } = require('google-auth-library');
-
-// Add global error handlers to prevent crashes
-process.on('unhandledRejection', (reason, promise) => {
-  console.log('🔄 Unhandled Rejection caught:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('🔄 Uncaught Exception caught:', error.message);
-  console.error('🔴 Critical error, exiting:', error);
-  process.exit(1);
-});
-
-// Validate configuration on startup
-config.validate();
-
-// Google OAuth Client
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const { validateGoogleToken } = require('../middleware/auth');
 
 // Rate limiting configurations
 const signinLimiter = rateLimit({
@@ -50,36 +33,11 @@ function sanitizeInput(input) {
 // ===== GOOGLE OAUTH ROUTES =====
 
 // User Google OAuth Signin/Signup
-router.post('/user/google', signinLimiter, async (req, res) => {
+router.post('/user/google', signinLimiter, validateGoogleToken, async (req, res) => {
   try {
-    const { token } = req.body;
-
-    if (!token) {
-      return res.status(400).json({ 
-        error: "Google token is required",
-        details: "Please provide a valid Google authentication token"
-      });
-    }
-
-    console.log('🔄 Verifying Google token for user...');
-
-    // Verify Google token
-    const ticket = await googleClient.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const { email, name, picture, sub: googleId, email_verified } = payload;
-
-    console.log('✅ Google token verified for:', email);
-
-    if (!email_verified) {
-      return res.status(400).json({
-        error: "Email not verified by Google",
-        details: "Please verify your email with Google first"
-      });
-    }
+    const { email, name, picture, googleId, email_verified } = req.googleUser;
+    
+    console.log('✅ Google token verified for user:', email);
 
     // Check if user exists
     let user = await User.findOne({ 
@@ -174,35 +132,11 @@ router.post('/user/google', signinLimiter, async (req, res) => {
 });
 
 // Provider Google OAuth Signin/Signup
-router.post('/provider/google', signinLimiter, async (req, res) => {
+router.post('/provider/google', signinLimiter, validateGoogleToken, async (req, res) => {
   try {
-    const { token } = req.body;
-
-    if (!token) {
-      return res.status(400).json({ 
-        error: "Google token is required",
-        details: "Please provide a valid Google authentication token"
-      });
-    }
-
-    console.log('🔄 Verifying Google token for provider...');
-
-    const ticket = await googleClient.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const { email, name, picture, sub: googleId, email_verified } = payload;
-
+    const { email, name, picture, googleId, email_verified } = req.googleUser;
+    
     console.log('✅ Google token verified for provider:', email);
-
-    if (!email_verified) {
-      return res.status(400).json({
-        error: "Email not verified by Google",
-        details: "Please verify your email with Google first"
-      });
-    }
 
     // Check if provider exists
     let provider = await Provider.findOne({ 
@@ -433,6 +367,61 @@ router.put('/provider/profile', async (req, res) => {
   }
 });
 
+// ===== ADDITIONAL AUTH ROUTES =====
+
+// Get current user profile
+router.get('/me', require('../middleware/auth').authenticateToken, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      user: req.userData.toPublicJSON(),
+      authInfo: {
+        userType: req.user.userType,
+        authMethod: req.user.authMethod
+      }
+    });
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get user profile'
+    });
+  }
+});
+
+// Refresh JWT token
+router.post('/refresh', require('../middleware/auth').authenticateToken, async (req, res) => {
+  try {
+    // Generate new JWT token
+    const jwtToken = jwt.sign({
+      email: req.user.email,
+      id: req.user.id,
+      userType: req.user.userType,
+      authMethod: req.user.authMethod
+    }, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
+
+    res.json({
+      success: true,
+      token: jwtToken,
+      message: 'Token refreshed successfully'
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to refresh token'
+    });
+  }
+});
+
+// Logout (client-side token removal)
+router.post('/logout', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Logout successful. Please remove the token from client storage.'
+  });
+});
+
 // Health check for auth routes
 router.get('/health', (req, res) => {
   res.json({
@@ -446,11 +435,21 @@ router.get('/health', (req, res) => {
       googleOAuth: true,
       passwordReset: false, // Disabled since we're using Google OAuth
       emailActivation: false, // Disabled since we're using Google OAuth
-      rateLimiting: true
+      rateLimiting: true,
+      tokenRefresh: true,
+      profileAccess: true
     },
     googleOAuth: {
       configured: !!process.env.GOOGLE_CLIENT_ID,
       clientId: process.env.GOOGLE_CLIENT_ID ? '✅ Configured' : '❌ Missing'
+    },
+    endpoints: {
+      userLogin: 'POST /api/auth/user/google',
+      providerLogin: 'POST /api/auth/provider/google',
+      profile: 'GET /api/auth/me',
+      refresh: 'POST /api/auth/refresh',
+      logout: 'POST /api/auth/logout',
+      checkEmail: 'POST /api/auth/check-email'
     }
   });
 });
