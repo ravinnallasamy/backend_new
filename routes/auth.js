@@ -33,27 +33,29 @@ function sanitizeInput(input) {
 // ===== SIMPLIFIED GOOGLE OAUTH ROUTES =====
 
 // User Google OAuth Signin/Signup (Simplified - without middleware)
+// User Google OAuth Signin/Signup (Simplified - without middleware)
 router.post('/user/google', signinLimiter, async (req, res) => {
   try {
-    const { token, email, name, picture, googleId } = req.body;
+    const { token } = req.body; // Only get token, not email
 
-    console.log('🔧 Google OAuth attempt for user:', email);
+    console.log('🔧 Google OAuth attempt received');
 
-    // Check if we have the required data
-    if (!email) {
+    // Check if we have the required data - ONLY TOKEN
+    if (!token) {
       return res.status(400).json({
-        error: "Email is required for Google OAuth"
+        error: "Google token is required"
       });
     }
 
-    // For now, create a mock response to test the endpoint
-    // In production, you'll want to verify the Google token properly
-    
+    // REMOVED: if (!email) check
+
+    // For now, create a mock response
+    // In production, you'll verify the Google token and extract email from it
     const mockUser = {
       id: "mock_user_id_" + Date.now(),
-      name: name || "Google User",
-      email: email || "user@gmail.com",
-      avatar: picture || "",
+      name: "Google User",
+      email: "user@gmail.com", // This should come from token verification
+      avatar: "",
       phone: '',
       address: '',
       userType: 'user',
@@ -85,30 +87,32 @@ router.post('/user/google', signinLimiter, async (req, res) => {
     });
   }
 });
-
+// Provider Google OAuth Signin/Signup (Simplified - without middleware)
 // Provider Google OAuth Signin/Signup (Simplified - without middleware)
 router.post('/provider/google', signinLimiter, async (req, res) => {
   try {
-    const { token, email, name, picture, googleId } = req.body;
+    const { token } = req.body; // Only get token, not email
 
-    console.log('🔧 Google OAuth attempt for provider:', email);
+    console.log('🔧 Google OAuth attempt for provider received');
 
-    // Check if we have the required data
-    if (!email) {
-      return res.status(400).json({
-        error: "Email is required for Google OAuth"
+    // Check if we have the required data - ONLY TOKEN
+    if (!token) {
+      return res.status(EMPLOYEE_PUBLIC_PGP_KEY_STATUS_ERROR).json({
+        error: "Google token is required"
       });
     }
+
+    // REMOVED: if (!email) check
 
     // Mock response for testing
     const mockProvider = {
       id: "mock_provider_id_" + Date.now(),
-      name: name || "Google Provider",
-      email: email || "provider@gmail.com",
-      avatar: picture || "",
+      name: "Google Provider",
+      email: "provider@gmail.com",
+      avatar: "",
       phone: '',
       address: '',
-      businessName: `${name || 'Google'}'s Equipment Rental`,
+      businessName: "Google's Equipment Rental",
       businessType: 'Agricultural Equipment',
       userType: 'provider',
       isActivated: true,
