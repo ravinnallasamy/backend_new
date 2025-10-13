@@ -233,7 +233,7 @@ router.get('/:id/requests', authenticateToken, requireOwnershipOrProvider, async
   try {
     const Request = require('../model/request');
     const requests = await Request.find({ 
-      userId: req.params.id, 
+      customerId: req.params.id, 
       isActive: true 
     }).sort({ requestDate: -1 });
     
@@ -275,25 +275,25 @@ router.get('/:id/stats', authenticateToken, requireOwnershipOrProvider, async (r
     const Request = require('../model/request');
 
     const totalRequests = await Request.countDocuments({ 
-      userId: userId, 
+      customerId: userId, 
       isActive: true 
     });
 
     const pendingRequests = await Request.countDocuments({ 
-      userId: userId, 
+      customerId: userId, 
       status: 'pending',
       isActive: true 
     });
 
     const completedRentals = await Request.countDocuments({ 
-      userId: userId, 
+      customerId: userId, 
       status: 'completed',
       isActive: true 
     });
 
     const activeRentals = await Request.countDocuments({ 
-      userId: userId, 
-      status: { $in: ['accepted', 'in-progress'] },
+      customerId: userId, 
+      status: { $in: ['approved', 'in-progress'] },
       isActive: true 
     });
 

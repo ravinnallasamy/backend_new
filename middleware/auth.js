@@ -1,5 +1,6 @@
 /**
  * Authentication Middleware
+ * Updated for Google OAuth compatibility
  * 
  * This middleware handles JWT token verification and user authentication
  * for protected routes in the agricultural equipment rental platform.
@@ -33,12 +34,12 @@ const authenticateToken = async (req, res, next) => {
     // Verify JWT token
     const decoded = jwt.verify(token, config.jwt.secret);
     
-    // Find user based on decoded information
+    // Find user based on decoded information - FIXED FIELD NAME
     let user;
     if (decoded.userType === 'provider') {
-      user = await Provider.findById(decoded.id).select('-googleId');
+      user = await Provider.findById(decoded.userId).select('-googleId');
     } else {
-      user = await User.findById(decoded.id).select('-googleId');
+      user = await User.findById(decoded.userId).select('-googleId');
     }
 
     if (!user) {
@@ -49,17 +50,18 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    if (!user.isActive) {
+    // UPDATED: Check isActivated instead of isActive
+    if (!user.isActivated) {
       return res.status(401).json({
         success: false,
-        error: 'Account deactivated',
-        message: 'Your account has been deactivated'
+        error: 'Account not activated',
+        message: 'Your account is not activated'
       });
     }
 
-    // Add user information to request object
+    // Add user information to request object - UPDATED FIELD NAME
     req.user = {
-      id: user._id,
+      userId: user._id, // Changed from 'id' to 'userId'
       email: user.email,
       userType: decoded.userType,
       authMethod: decoded.authMethod
@@ -140,7 +142,7 @@ const requireProvider = (req, res, next) => {
 const requireOwnershipOrProvider = async (req, res, next) => {
   try {
     const resourceId = req.params.id || req.params.userId || req.params.providerId;
-    const userId = req.user.id;
+    const userId = req.user.userId; // UPDATED: Use userId instead of id
     const userType = req.user.userType;
 
     // Providers can access their own resources
@@ -197,14 +199,14 @@ const optionalAuth = async (req, res, next) => {
     
     let user;
     if (decoded.userType === 'provider') {
-      user = await Provider.findById(decoded.id).select('-googleId');
+      user = await Provider.findById(decoded.userId).select('-googleId'); // FIXED: userId
     } else {
-      user = await User.findById(decoded.id).select('-googleId');
+      user = await User.findById(decoded.userId).select('-googleId'); // FIXED: userId
     }
 
-    if (user && user.isActive) {
+    if (user && user.isActivated) { // UPDATED: isActivated instead of isActive
       req.user = {
-        id: user._id,
+        userId: user._id, // UPDATED: userId instead of id
         email: user.email,
         userType: decoded.userType,
         authMethod: decoded.authMethod

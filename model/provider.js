@@ -17,27 +17,26 @@ const providerSchema = new mongoose.Schema({
   // Google OAuth fields
   googleId: {
     type: String,
-    required: [true, 'Google ID is required'],
     unique: true,
-    sparse: true
+    sparse: true // UPDATED: Make optional
   },
   avatar: {
     type: String,
-    default: null
+    default: ''
   },
   authMethod: {
     type: String,
-    enum: ['google'],
+    enum: ['google', 'traditional'],
     default: 'google'
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
-    match: [/^[0-9]{10}$/, 'Please enter a valid 10-digit phone number']
+    default: '', // UPDATED: Make optional for Google OAuth
+    trim: true
   },
   address: {
     type: String,
-    required: [true, 'Address is required'],
+    default: '', // UPDATED: Make optional for Google OAuth
     trim: true,
     maxlength: [500, 'Address cannot exceed 500 characters']
   },
@@ -59,43 +58,42 @@ const providerSchema = new mongoose.Schema({
   },
   businessType: {
     type: String,
-    default: 'Equipment Rental',
+    default: 'Agricultural Equipment',
     validate: {
       validator: function(value) {
         const allowedValues = [
-          'Equipment Rental',
+          'Agricultural Equipment',
           'Farm Services',
           'Agricultural Contractor',
           'Equipment Dealer',
-          'Other',
-          '' // Allow empty string
+          'Other'
         ];
         return allowedValues.includes(value);
       },
-      message: 'businessType must be one of: Equipment Rental, Farm Services, Agricultural Contractor, Equipment Dealer, Other'
-    },
-    // Transform empty strings to default value
-    set: function(value) {
-      return value === '' || value == null ? 'Equipment Rental' : value;
+      message: 'businessType must be one of: Agricultural Equipment, Farm Services, Agricultural Contractor, Equipment Dealer, Other'
     }
   },
   licenseNumber: {
     type: String,
+    default: '', // UPDATED: Make optional
     trim: true,
     maxlength: [50, 'License number cannot exceed 50 characters']
   },
   serviceArea: {
     type: String,
+    default: '', // UPDATED: Make optional
     trim: true,
     maxlength: [300, 'Service area cannot exceed 300 characters']
   },
   experience: {
     type: Number,
+    default: 0, // UPDATED: Add default
     min: [0, 'Experience cannot be negative'],
     max: [100, 'Experience cannot exceed 100 years']
   },
   certifications: {
     type: String,
+    default: '', // UPDATED: Make optional
     maxlength: [1000, 'Certifications cannot exceed 1000 characters']
   },
 
@@ -107,6 +105,10 @@ const providerSchema = new mongoose.Schema({
   isActivated: {
     type: Boolean,
     default: true // Always true for Google OAuth
+  },
+  emailVerified: { // UPDATED: Add email verification status
+    type: Boolean,
+    default: false
   },
   activatedAt: {
     type: Date,
@@ -160,16 +162,33 @@ providerSchema.virtual('averageRating').get(function() {
 providerSchema.methods.toPublicJSON = function() {
   const providerObject = this.toObject();
   
-  // Remove any sensitive fields
-  delete providerObject.googleId;
-  delete providerObject.authMethod;
-  delete providerObject.__v;
+  const publicProfile = {
+    id: providerObject._id,
+    name: providerObject.name,
+    email: providerObject.email,
+    avatar: providerObject.avatar,
+    phone: providerObject.phone,
+    address: providerObject.address,
+    businessName: providerObject.businessName,
+    businessType: providerObject.businessType,
+    userType: providerObject.userType,
+    isActivated: providerObject.isActivated,
+    authMethod: providerObject.authMethod,
+    licenseNumber: providerObject.licenseNumber,
+    serviceArea: providerObject.serviceArea,
+    experience: providerObject.experience,
+    certifications: providerObject.certifications,
+    totalEquipment: providerObject.totalEquipment,
+    totalRentals: providerObject.totalRentals,
+    rating: providerObject.rating,
+    reviewCount: providerObject.reviewCount,
+    averageRating: this.averageRating,
+    isProfileComplete: this.isProfileComplete,
+    createdAt: providerObject.createdAt,
+    updatedAt: providerObject.updatedAt
+  };
   
-  // Add computed fields
-  providerObject.averageRating = this.averageRating;
-  providerObject.isProfileComplete = this.isProfileComplete;
-  
-  return providerObject;
+  return publicProfile;
 };
 
 // Static method to find by Google ID or email
@@ -180,6 +199,38 @@ providerSchema.statics.findByGoogleIdOrEmail = function(googleId, email) {
       { email: email.toLowerCase() }
     ]
   });
+};
+
+// Static method to create provider from Google OAuth data
+providerSchema.statics.createFromGoogle = function(googleData) {
+  return this.create({
+    name: googleData.name,
+    email: googleData.email,
+    avatar: googleData.picture,
+    googleId: googleData.googleId,
+    authMethod: 'google',
+    userType: 'provider',
+    businessName: `${googleData.name}'s Equipment Rental`,
+    businessType: 'Agricultural Equipment',
+    emailVerified: googleData.emailVerified,
+    isActivated: true,
+    isActive: true
+  });
+};
+
+// Method to update provider profile
+providerSchema.methods.updateProfile = function(updates) {
+  const allowedUpdates = [
+    'name', 'phone', 'address', 'avatar', 
+    'businessName', 'businessType', 'licenseNumber',
+    'serviceArea', 'experience', 'certifications'
+  ];
+  allowedUpdates.forEach(field => {
+    if (updates[field] !== undefined) {
+      this[field] = updates[field];
+    }
+  });
+  return this.save();
 };
 
 // Method to update provider statistics

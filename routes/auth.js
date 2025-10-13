@@ -5,7 +5,10 @@ const Provider = require('../model/provider');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 const rateLimit = require('express-rate-limit');
-const { validateGoogleToken } = require('../middleware/auth');
+const { OAuth2Client } = require('google-auth-library');
+
+// Initialize Google OAuth client
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Rate limiting configurations
 const signinLimiter = rateLimit({
@@ -30,114 +33,221 @@ function sanitizeInput(input) {
   return input.trim().replace(/[<>]/g, '');
 }
 
-// ===== SIMPLIFIED GOOGLE OAUTH ROUTES =====
+/**
+ * Verify Google token and extract user data
+ */
+async function verifyGoogleToken(token) {
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+    return {
+      googleId: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+      emailVerified: payload.email_verified
+    };
+  } catch (error) {
+    console.error('Google token verification failed:', error);
+    throw new Error('Invalid Google token');
+  }
+}
 
-// User Google OAuth Signin/Signup (Simplified - without middleware)
-// User Google OAuth Signin/Signup (Simplified - without middleware)
+// ===== GOOGLE OAUTH ROUTES =====
+
+// User Google OAuth Signin/Signup
 router.post('/user/google', signinLimiter, async (req, res) => {
   try {
-    const { token } = req.body; // Only get token, not email
+    const { token } = req.body;
 
-    console.log('🔧 Google OAuth attempt received');
+    console.log('🔧 User Google OAuth attempt');
 
-    // Check if we have the required data - ONLY TOKEN
     if (!token) {
       return res.status(400).json({
+        success: false,
         error: "Google token is required"
       });
     }
 
-    // REMOVED: if (!email) check
+    // Verify Google token and extract user data
+    const googleUser = await verifyGoogleToken(token);
+    
+    console.log('Google user data:', {
+      email: googleUser.email,
+      name: googleUser.name,
+      googleId: googleUser.googleId
+    });
 
-    // For now, create a mock response
-    // In production, you'll verify the Google token and extract email from it
-    const mockUser = {
-      id: "mock_user_id_" + Date.now(),
-      name: "Google User",
-      email: "user@gmail.com", // This should come from token verification
-      avatar: "",
-      phone: '',
-      address: '',
-      userType: 'user',
-      isActivated: true,
-      authMethod: 'google'
+    // Check if user already exists by email or googleId
+    let user = await User.findOne({
+      $or: [
+        { email: googleUser.email.toLowerCase() },
+        { googleId: googleUser.googleId }
+      ]
+    });
+
+    const isNewUser = !user;
+
+    if (!user) {
+      // Create new user
+      user = new User({
+        name: googleUser.name,
+        email: googleUser.email.toLowerCase(),
+        avatar: googleUser.picture,
+        googleId: googleUser.googleId,
+        userType: 'user',
+        authMethod: 'google',
+        isActivated: true,
+        emailVerified: googleUser.emailVerified
+      });
+      await user.save();
+      console.log('✅ New user created:', user.email);
+    } else {
+      // Update existing user with Google data if needed
+      if (!user.googleId) {
+        user.googleId = googleUser.googleId;
+        user.authMethod = 'google';
+        await user.save();
+      }
+      console.log('✅ Existing user logged in:', user.email);
+    }
+
+    // Prepare user data for response
+    const userData = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      phone: user.phone || '',
+      address: user.address || '',
+      userType: user.userType,
+      isActivated: user.isActivated,
+      authMethod: user.authMethod
     };
 
     // Generate JWT token
     const jwtToken = jwt.sign({
-      email: mockUser.email,
-      id: mockUser.id,
-      userType: 'user',
-      authMethod: 'google'
+      userId: user._id,
+      email: user.email,
+      userType: user.userType,
+      authMethod: user.authMethod
     }, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
 
     res.status(200).json({
       success: true,
       token: jwtToken,
-      user: mockUser,
-      isNewUser: true,
-      message: "Google authentication successful!"
+      user: userData,
+      isNewUser: isNewUser,
+      message: isNewUser ? "Account created successfully!" : "Login successful!"
     });
 
   } catch (err) {
-    console.error('Google OAuth error:', err);
+    console.error('User Google OAuth error:', err);
     res.status(400).json({ 
+      success: false,
       error: "Google authentication failed",
       details: err.message
     });
   }
 });
-// Provider Google OAuth Signin/Signup (Simplified - without middleware)
-// Provider Google OAuth Signin/Signup (Simplified - without middleware)
+
+// Provider Google OAuth Signin/Signup
 router.post('/provider/google', signinLimiter, async (req, res) => {
   try {
-    const { token } = req.body; // Only get token, not email
+    const { token } = req.body;
 
-    console.log('🔧 Google OAuth attempt for provider received');
+    console.log('🔧 Provider Google OAuth attempt');
 
-    // Check if we have the required data - ONLY TOKEN
     if (!token) {
-      return res.status(EMPLOYEE_PUBLIC_PGP_KEY_STATUS_ERROR).json({
+      return res.status(400).json({
+        success: false,
         error: "Google token is required"
       });
     }
 
-    // REMOVED: if (!email) check
+    // Verify Google token and extract user data
+    const googleUser = await verifyGoogleToken(token);
+    
+    console.log('Google provider data:', {
+      email: googleUser.email,
+      name: googleUser.name,
+      googleId: googleUser.googleId
+    });
 
-    // Mock response for testing
-    const mockProvider = {
-      id: "mock_provider_id_" + Date.now(),
-      name: "Google Provider",
-      email: "provider@gmail.com",
-      avatar: "",
-      phone: '',
-      address: '',
-      businessName: "Google's Equipment Rental",
-      businessType: 'Agricultural Equipment',
-      userType: 'provider',
-      isActivated: true,
-      authMethod: 'google'
+    // Check if provider already exists by email or googleId
+    let provider = await Provider.findOne({
+      $or: [
+        { email: googleUser.email.toLowerCase() },
+        { googleId: googleUser.googleId }
+      ]
+    });
+
+    const isNewProvider = !provider;
+
+    if (!provider) {
+      // Create new provider
+      provider = new Provider({
+        name: googleUser.name,
+        email: googleUser.email.toLowerCase(),
+        avatar: googleUser.picture,
+        googleId: googleUser.googleId,
+        businessName: `${googleUser.name}'s Equipment Rental`,
+        businessType: 'Agricultural Equipment',
+        userType: 'provider',
+        authMethod: 'google',
+        isActivated: true,
+        emailVerified: googleUser.emailVerified
+      });
+      await provider.save();
+      console.log('✅ New provider created:', provider.email);
+    } else {
+      // Update existing provider with Google data if needed
+      if (!provider.googleId) {
+        provider.googleId = googleUser.googleId;
+        provider.authMethod = 'google';
+        await provider.save();
+      }
+      console.log('✅ Existing provider logged in:', provider.email);
+    }
+
+    // Prepare provider data for response
+    const providerData = {
+      id: provider._id,
+      name: provider.name,
+      email: provider.email,
+      avatar: provider.avatar,
+      phone: provider.phone || '',
+      address: provider.address || '',
+      businessName: provider.businessName,
+      businessType: provider.businessType,
+      userType: provider.userType,
+      isActivated: provider.isActivated,
+      authMethod: provider.authMethod
     };
 
     // Generate JWT token
     const jwtToken = jwt.sign({
-      email: mockProvider.email,
-      id: mockProvider.id,
-      userType: 'provider',
-      authMethod: 'google'
+      userId: provider._id,
+      email: provider.email,
+      userType: provider.userType,
+      authMethod: provider.authMethod
     }, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
 
     res.status(200).json({
       success: true,
       token: jwtToken,
-      user: mockProvider,
-      isNewUser: true,
-      message: "Provider Google authentication successful!"
+      user: providerData,
+      isNewUser: isNewProvider,
+      message: isNewProvider ? "Provider account created successfully!" : "Provider login successful!"
     });
 
   } catch (err) {
     console.error('Provider Google OAuth error:', err);
     res.status(400).json({ 
+      success: false,
       error: "Google authentication failed",
       details: err.message
     });
@@ -151,12 +261,16 @@ router.post('/check-email', async (req, res) => {
 
     if (!email || !userType) {
       return res.status(400).json({
+        success: false,
         error: "Email and userType are required"
       });
     }
 
     if (!isValidEmail(email)) {
-      return res.status(400).json({ error: "Invalid email format" });
+      return res.status(400).json({ 
+        success: false,
+        error: "Invalid email format" 
+      });
     }
 
     const Model = userType === 'provider' ? Provider : User;
@@ -164,21 +278,24 @@ router.post('/check-email', async (req, res) => {
 
     if (account) {
       return res.json({
+        success: true,
         exists: true,
-        authMethod: account.authMethod || 'traditional',
+        authMethod: account.authMethod || 'google',
         userType: account.userType,
         name: account.name
       });
     } else {
       return res.json({
+        success: true,
         exists: false,
-        authMethod: 'google' // Suggest Google OAuth for new users
+        authMethod: 'google'
       });
     }
 
   } catch (err) {
     console.error('Check email error:', err);
     res.status(500).json({ 
+      success: false,
       error: "Internal server error"
     });
   }
@@ -187,22 +304,24 @@ router.post('/check-email', async (req, res) => {
 // Update user/profile information
 router.put('/user/profile', async (req, res) => {
   try {
-    const { email, updates } = req.body;
+    const { userId, updates } = req.body;
 
-    if (!email || !updates) {
+    if (!userId || !updates) {
       return res.status(400).json({
-        error: "Email and updates are required"
+        success: false,
+        error: "User ID and updates are required"
       });
     }
 
-    const user = await User.findOneAndUpdate(
-      { email: email.toLowerCase() },
+    const user = await User.findByIdAndUpdate(
+      userId,
       { $set: updates },
       { new: true }
     );
 
     if (!user) {
       return res.status(404).json({
+        success: false,
         error: "User not found"
       });
     }
@@ -228,6 +347,7 @@ router.put('/user/profile', async (req, res) => {
   } catch (err) {
     console.error('Update profile error:', err);
     res.status(500).json({ 
+      success: false,
       error: "Internal server error"
     });
   }
@@ -236,22 +356,24 @@ router.put('/user/profile', async (req, res) => {
 // Update provider/profile information
 router.put('/provider/profile', async (req, res) => {
   try {
-    const { email, updates } = req.body;
+    const { providerId, updates } = req.body;
 
-    if (!email || !updates) {
+    if (!providerId || !updates) {
       return res.status(400).json({
-        error: "Email and updates are required"
+        success: false,
+        error: "Provider ID and updates are required"
       });
     }
 
-    const provider = await Provider.findOneAndUpdate(
-      { email: email.toLowerCase() },
+    const provider = await Provider.findByIdAndUpdate(
+      providerId,
       { $set: updates },
       { new: true }
     );
 
     if (!provider) {
       return res.status(404).json({
+        success: false,
         error: "Provider not found"
       });
     }
@@ -279,6 +401,7 @@ router.put('/provider/profile', async (req, res) => {
   } catch (err) {
     console.error('Update provider profile error:', err);
     res.status(500).json({ 
+      success: false,
       error: "Internal server error"
     });
   }
@@ -289,13 +412,45 @@ router.put('/provider/profile', async (req, res) => {
 // Get current user profile
 router.get('/me', require('../middleware/auth').authenticateToken, async (req, res) => {
   try {
+    const userType = req.user.userType;
+    const Model = userType === 'provider' ? Provider : User;
+    
+    const user = await Model.findById(req.user.userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+
+    const userData = userType === 'provider' ? {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      phone: user.phone,
+      address: user.address,
+      businessName: user.businessName,
+      businessType: user.businessType,
+      userType: user.userType,
+      isActivated: user.isActivated,
+      authMethod: user.authMethod
+    } : {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      phone: user.phone,
+      address: user.address,
+      userType: user.userType,
+      isActivated: user.isActivated,
+      authMethod: user.authMethod
+    };
+
     res.json({
       success: true,
-      user: req.userData.toPublicJSON(),
-      authInfo: {
-        userType: req.user.userType,
-        authMethod: req.user.authMethod
-      }
+      user: userData
     });
   } catch (error) {
     console.error('Get current user error:', error);
@@ -309,11 +464,13 @@ router.get('/me', require('../middleware/auth').authenticateToken, async (req, r
 // Refresh JWT token
 router.post('/refresh', require('../middleware/auth').authenticateToken, async (req, res) => {
   try {
+    const userType = req.user.userType;
+    
     // Generate new JWT token
     const jwtToken = jwt.sign({
+      userId: req.user.userId,
       email: req.user.email,
-      id: req.user.id,
-      userType: req.user.userType,
+      userType: userType,
       authMethod: req.user.authMethod
     }, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
 
@@ -350,8 +507,8 @@ router.get('/health', (req, res) => {
       userAuth: true,
       providerAuth: true,
       googleOAuth: true,
-      passwordReset: false, // Disabled since we're using Google OAuth
-      emailActivation: false, // Disabled since we're using Google OAuth
+      passwordReset: false,
+      emailActivation: false,
       rateLimiting: true,
       tokenRefresh: true,
       profileAccess: true

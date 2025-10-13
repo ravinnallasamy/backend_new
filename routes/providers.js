@@ -237,28 +237,18 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id/equipment', authenticateToken, requireOwnershipOrProvider, async (req, res) => {
   try {
     const Equipment = require('../model/equipment');
-    const mongoose = require('mongoose');
     const providerId = req.params.id;
 
-    // Handle both ObjectId and string comparisons
+    // FIXED: Simple query to get only this provider's equipment
     const equipment = await Equipment.find({
-      $or: [
-        { providerId: providerId },
-        { providerId: mongoose.Types.ObjectId.isValid(providerId) ? new mongoose.Types.ObjectId(providerId) : null },
-        { providerEmail: { $exists: true } } // Fallback for email-based matching
-      ],
+      providerId: providerId,
       isActive: true
     });
 
-    // Additional filtering for cases where providerId is stored as string
-    const filteredEquipment = equipment.filter(item =>
-      item.providerId?.toString() === providerId.toString()
-    );
-
     res.json({
       success: true,
-      data: filteredEquipment,
-      count: filteredEquipment.length
+      data: equipment,
+      count: equipment.length
     });
   } catch (error) {
     console.error('Error fetching provider equipment:', error);
@@ -314,7 +304,7 @@ router.get('/:id/stats', async (req, res) => {
 
     const activeRequests = await Request.countDocuments({ 
       providerId: req.params.id, 
-      status: { $in: ['pending', 'accepted'] },
+      status: { $in: ['pending', 'approved'] },
       isActive: true 
     });
 

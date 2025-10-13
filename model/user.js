@@ -1,6 +1,7 @@
 // backend/models/User.js
 /**
  * User Data Model
+ * Updated for Google OAuth compatibility
  *
  * This file defines the database schema for regular users (farmers/customers)
  * who want to rent agricultural equipment. The schema includes personal information,
@@ -25,8 +26,8 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
-    match: [/^[0-9]{10}$/, 'Please enter a valid 10-digit phone number']
+    default: '', // UPDATED: Make optional for Google OAuth
+    trim: true
   },
   email: {
     type: String,
@@ -37,30 +38,29 @@ const userSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    required: [true, 'Address is required'],
+    default: '', // UPDATED: Make optional for Google OAuth
     trim: true,
     maxlength: [500, 'Address cannot exceed 500 characters']
   },
   // Google OAuth fields
   googleId: {
     type: String,
-    required: [true, 'Google ID is required'],
     unique: true,
-    sparse: true
+    sparse: true // UPDATED: Make optional (not all users might have it initially)
   },
   avatar: {
     type: String,
-    default: null
+    default: ''
   },
   authMethod: {
     type: String,
-    enum: ['google'],
+    enum: ['google', 'traditional'],
     default: 'google'
   },
   userType: {
     type: String,
-    enum: ['user', 'customer'],
-    default: 'user'
+    enum: ['user'],
+    default: 'user' // UPDATED: Remove 'customer' to avoid confusion
   },
   isActive: {
     type: Boolean,
@@ -69,6 +69,10 @@ const userSchema = new mongoose.Schema({
   isActivated: {
     type: Boolean,
     default: true // Always true for Google OAuth (emails are pre-verified)
+  },
+  emailVerified: { // UPDATED: Add email verification status from Google
+    type: Boolean,
+    default: false
   },
   activatedAt: {
     type: Date,
@@ -95,12 +99,22 @@ userSchema.virtual('isProfileComplete').get(function() {
 userSchema.methods.toPublicJSON = function() {
   const userObject = this.toObject();
   
-  // Remove any sensitive fields
-  delete userObject.googleId;
-  delete userObject.authMethod;
-  delete userObject.__v;
+  const publicProfile = {
+    id: userObject._id,
+    name: userObject.name,
+    email: userObject.email,
+    avatar: userObject.avatar,
+    phone: userObject.phone,
+    address: userObject.address,
+    userType: userObject.userType,
+    isActivated: userObject.isActivated,
+    authMethod: userObject.authMethod,
+    isProfileComplete: this.isProfileComplete,
+    createdAt: userObject.createdAt,
+    updatedAt: userObject.updatedAt
+  };
   
-  return userObject;
+  return publicProfile;
 };
 
 // Static method to find by Google ID or email
@@ -111,6 +125,32 @@ userSchema.statics.findByGoogleIdOrEmail = function(googleId, email) {
       { email: email.toLowerCase() }
     ]
   });
+};
+
+// Static method to create user from Google OAuth data
+userSchema.statics.createFromGoogle = function(googleData) {
+  return this.create({
+    name: googleData.name,
+    email: googleData.email,
+    avatar: googleData.picture,
+    googleId: googleData.googleId,
+    authMethod: 'google',
+    userType: 'user',
+    emailVerified: googleData.emailVerified,
+    isActivated: true,
+    isActive: true
+  });
+};
+
+// Method to update profile
+userSchema.methods.updateProfile = function(updates) {
+  const allowedUpdates = ['name', 'phone', 'address', 'avatar'];
+  allowedUpdates.forEach(field => {
+    if (updates[field] !== undefined) {
+      this[field] = updates[field];
+    }
+  });
+  return this.save();
 };
 
 // This model stores user/customer accounts with Google OAuth

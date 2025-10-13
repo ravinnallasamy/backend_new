@@ -447,4 +447,4 @@ equipmentSchema.methods.addMaintenance = function(description, cost = 0, perform
 };
 
 // This model stores equipment information
-module.exports = mongoose.model('Equipment', equipmentSchema, 'equipments');
+module.exports = mongoose.model('Equipment', equipmentSchema, 'equipments');x

@@ -16,7 +16,7 @@ const config = {
     expiresIn: process.env.JWT_EXPIRE || '7d'
   },
   
-  // Google OAuth Configuration - NEW
+  // Google OAuth Configuration
   googleOAuth: {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET
@@ -62,7 +62,8 @@ const config = {
   validate() {
     const required = [
       'GOOGLE_CLIENT_ID',
-      'JWT_SECRET'
+      'JWT_SECRET',
+      'MONGODB_URI'
     ];
     
     const missing = required.filter(key => !process.env[key]);
@@ -157,6 +158,25 @@ const config = {
   // Check if running in production mode
   isProduction() {
     return this.nodeEnv === 'production';
+  },
+
+  // Get MongoDB configuration
+  getMongoConfig() {
+    return {
+      uri: this.mongodb.uri,
+      options: {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+      }
+    };
+  },
+
+  // Get JWT configuration
+  getJWTConfig() {
+    return {
+      secret: this.jwt.secret,
+      expiresIn: this.jwt.expiresIn
+    };
   }
 };
 
@@ -181,4 +201,4 @@ if (config.nodeEnv === 'production') {
   }
 }
 
-module.exports = config;
+module.exports = config; 
