@@ -11,10 +11,10 @@ const config = {
   },
   
   // JWT Configuration
-  jwt: {
-    secret: process.env.JWT_SECRET || 'your-super-secure-jwt-secret-change-in-production',
-    expiresIn: process.env.JWT_EXPIRE || '7d'
-  },
+ jwt: {
+  secret: process.env.JWT_SECRET || 'your-super-secure-jwt-secret-change-in-production',
+  expiresIn: process.env.JWT_EXPIRE || '7d'
+},
   
   // Google OAuth Configuration
   googleOAuth: {
